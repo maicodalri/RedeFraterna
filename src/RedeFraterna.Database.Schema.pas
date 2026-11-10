@@ -17,7 +17,7 @@ interface
 uses
   Classes, SysUtils, SyncObjs, DB, ZConnection, ZDataset,
   twapi.SQLBuilder, twapi.TextFileLog,
-  RedeFraterna.Database.Seeds;
+  RedeFraterna.Constants, RedeFraterna.Database.Seeds;
 
 type
   { TRedeFraternaSchema }
@@ -162,7 +162,8 @@ begin
     LQry := TZQuery.Create(nil);
     try
       LQry.Connection := AConn;
-      LQry.SQL.Text := 'SELECT COUNT(*) FROM tb_sistema WHERE UPPER(tenant_alias) = ''REDEFRATERNA'' AND sistema = 1';
+      LQry.SQL.Text := 'SELECT COUNT(*) FROM tb_sistema WHERE UPPER(tenant_alias) = ''REDEFRATERNA'' AND sistema = :sis';
+      LQry.ParamByName('sis').AsInteger := REDEFRATERNA_ID;
       LQry.Open;
       if LQry.Fields[0].AsInteger = 0 then
       begin
@@ -176,7 +177,7 @@ begin
           LQry.ParamByName('db').AsString := 'redefraterna_db.db'
         else
           LQry.ParamByName('db').AsString := 'redefraterna_db';
-        LQry.ParamByName('sis').AsInteger := 1;
+        LQry.ParamByName('sis').AsInteger := REDEFRATERNA_ID;
         LQry.ParamByName('doc').AsString := '00.000.000/0001-00';
         LQry.ParamByName('fone').AsString := '(51) 3722-0000';
         LQry.ParamByName('dt').AsDate := EncodeDate(2099, 12, 31);
@@ -185,7 +186,8 @@ begin
 
       // Também garante o alias curto 'ume' apontando para o mesmo banco
       LQry.Close;
-      LQry.SQL.Text := 'SELECT COUNT(*) FROM tb_sistema WHERE UPPER(tenant_alias) = ''UME'' AND sistema = 1';
+      LQry.SQL.Text := 'SELECT COUNT(*) FROM tb_sistema WHERE UPPER(tenant_alias) = ''UME'' AND sistema = :sis';
+      LQry.ParamByName('sis').AsInteger := REDEFRATERNA_ID;
       LQry.Open;
       if LQry.Fields[0].AsInteger = 0 then
       begin
@@ -199,7 +201,7 @@ begin
           LQry.ParamByName('db').AsString := 'redefraterna_db.db'
         else
           LQry.ParamByName('db').AsString := 'redefraterna_db';
-        LQry.ParamByName('sis').AsInteger := 1;
+        LQry.ParamByName('sis').AsInteger := REDEFRATERNA_ID;
         LQry.ParamByName('doc').AsString := '00.000.000/0001-00';
         LQry.ParamByName('fone').AsString := '(51) 3722-0000';
         LQry.ParamByName('dt').AsDate := EncodeDate(2099, 12, 31);

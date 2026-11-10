@@ -1,0 +1,12 @@
+object DaemonMain: TDaemonMain
+  OnCreate = DataModuleCreate
+  OldCreateOrder = False
+  OnStart = DataModuleStart
+  OnStop = DataModuleStop
+  OnShutDown = DataModuleShutDown
+  Height = 324
+  HorizontalOffset = 440
+  VerticalOffset = 40
+  Width = 413
+  PPI = 120
+end

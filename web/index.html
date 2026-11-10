@@ -535,7 +535,11 @@
             <i class="fa-solid fa-bars text-lg"></i>
           </button>
 
-          <div class="w-10 h-10 rounded-xl bg-sky-700 text-white flex items-center justify-center shadow-sm">
+          <div v-if="companyLogo && !logoLoadFailed" class="h-10 max-w-[160px] flex items-center justify-center">
+            <img :src="companyLogo.startsWith('data:image') ? companyLogo : 'data:image/png;base64,' + companyLogo"
+                 alt="Logo" class="max-h-10 max-w-[160px] object-contain" @error="logoLoadFailed = true" />
+          </div>
+          <div v-else class="w-10 h-10 rounded-xl bg-sky-700 text-white flex items-center justify-center shadow-sm">
             <i class="fa-solid fa-hands-holding-child text-lg"></i>
           </div>
           <div>

@@ -15,7 +15,46 @@
       <ResourceType Value="res"/>
     </General>
     <BuildModes>
-      <Item Name="Default" Default="True"/>
+      <Item Name="Desenv" Default="True"/>
+      <Item Name="Production">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="D:\Desenv\Output\RedeFraterna\RedeFraternaServer"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir)"/>
+            <OtherUnitFiles Value="src;..\twapi;..\thirdparty\dataset-serialize\src;..\thirdparty\horse\src;..\thirdparty\restrequest4delphi\src;..\thirdparty\synapse"/>
+            <UnitOutputDirectory Value="D:\Desenv\Temp\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <Parsing>
+            <SyntaxOptions>
+              <SyntaxMode Value="Delphi"/>
+            </SyntaxOptions>
+          </Parsing>
+          <CodeGeneration>
+            <Optimizations>
+              <OptimizationLevel Value="4"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <RunWithoutDebug Value="True"/>
+              <DebugInfoType Value="dsDwarf3"/>
+            </Debugging>
+          </Linking>
+          <Other>
+            <Verbosity>
+              <ShowWarn Value="False"/>
+              <ShowNotes Value="False"/>
+              <ShowHints Value="False"/>
+            </Verbosity>
+            <CustomOptions Value="-dRR4D_SYNAPSE"/>
+          </Other>
+        </CompilerOptions>
+      </Item>
     </BuildModes>
     <PublishOptions>
       <Version Value="2"/>
@@ -32,6 +71,26 @@
     <Units>
       <Unit>
         <Filename Value="RedeFraternaServer.lpr"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="src\RedeFraterna.Initialize.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="src\RedeFraterna.Constants.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="src\RedeFraterna_Console.Write.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="src\RedeFraterna.Core.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="src\RedeFraterna.ClassServer.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
@@ -56,18 +115,26 @@
     <Version Value="11"/>
     <PathDelim Value="\"/>
     <Target>
-      <Filename Value="D:\Desenv\lazarus\EXE\RedeFraternaServer"/>
+      <Filename Value="D:\Desenv\Output\RedeFraterna\RedeFraternaServer"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="src;..\twapi;..\thirdparty\horse\src;..\thirdparty\dataset-serialize\src"/>
-      <UnitOutputDirectory Value="D:\Desenv\Temp"/>
+      <OtherUnitFiles Value="src;..\twapi;..\thirdparty\dataset-serialize\src;..\thirdparty\horse\src;..\thirdparty\restrequest4delphi\src;..\thirdparty\synapse"/>
+      <UnitOutputDirectory Value="D:\Desenv\Temp\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
+    <Parsing>
+      <SyntaxOptions>
+        <SyntaxMode Value="Delphi"/>
+      </SyntaxOptions>
+    </Parsing>
     <Linking>
       <Debugging>
         <DebugInfoType Value="dsDwarf3"/>
       </Debugging>
     </Linking>
+    <Other>
+      <CustomOptions Value="-dRR4D_SYNAPSE"/>
+    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions>

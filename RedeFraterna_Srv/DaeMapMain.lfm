@@ -1,0 +1,20 @@
+object DaemonMapperMain: TDaemonMapperMain
+  DaemonDefs = <  
+    item
+      DaemonClassName = 'TDaemonMain'
+      Name = 'LDRRedeFraterna_Srv'
+      Description = 'LDR RedeFraterna - Gestao Integrada de Centros Espiritas'
+      DisplayName = 'LDRRedeFraterna_Srv'
+      Options = [doAllowStop, doAllowPause]
+      WinBindings.Dependencies = <>
+      WinBindings.StartType = stAuto
+      WinBindings.WaitHint = 0
+      WinBindings.IDTag = 0
+      WinBindings.ServiceType = stWin32
+      WinBindings.ErrorSeverity = esIgnore
+      WinBindings.AcceptedCodes = []
+      LogStatusReport = False
+    end>
+  Left = 352
+  Top = 32
+end

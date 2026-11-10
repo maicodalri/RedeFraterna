@@ -19,7 +19,8 @@ uses
   Classes, SysUtils, StrUtils, IniFiles, DB, fpjson, jsonparser, sha1,
   Horse, Horse.Commons, ZConnection, ZDataset, DataSet.Serialize,
   twapi.Types, twapi.SQLBuilder, twapi.Controller, twapi.Controller.PoolConn,
-  twapi.Auth, twapi.TextFileLog, RedeFraterna.Database.Schema;
+  twapi.Auth, twapi.LicMan, twapi.TextFileLog,
+  RedeFraterna.Constants, RedeFraterna.Database.Schema, RedeFraterna.ClassServer;
 
 type
   TCurrentRequestUser = record
@@ -129,8 +130,8 @@ type
   public
     class function OnAuthenticate(const AUser: string; const APass: string;
       const ATenantAlias: string; const AIdSistem: Integer;
-      out ADataBase: string; out AUserId: Integer; out AErrorMsg: string;
-      out ATipoUser: string; out ALogoBase64: string): Boolean;
+      const ADataBase: string; out AUserId: Integer; out AErrorMsg: string;
+      out ATipoUser: string): Boolean;
 
     // Endpoints customizados para visões consolidadas e relatórios rápidos
     class procedure HandleGetMeuPerfil(Req: THorseRequest; Res: THorseResponse); static;
@@ -297,11 +298,27 @@ class function TRedeFraternaControllers.ResolveTenantDBName(const ATenantAlias: 
 var
   LMasterConn, LTmpl: TZConnection;
   LQryMaster: TZQuery;
-  LMasterDB, LAlias, LTenantDB: string;
+  LMasterDB, LAlias, LTenantDB, LErrorMsg, LLogoB64: string;
 begin
   LAlias := Trim(ATenantAlias);
   if LAlias = '' then
     LAlias := 'redefraterna';
+
+  LTenantDB := '';
+  LErrorMsg := '';
+  LLogoB64 := '';
+
+  // 1. Tenta resolver prioritariamente via License Manager da nova versão do TWAPI (TTwLicMan)
+  try
+    if TTwLicMan.ValidarTenant(LAlias, LTenantDB, LErrorMsg, LLogoB64) and (Trim(LTenantDB) <> '') then
+    begin
+      Result := Trim(LTenantDB);
+      Exit;
+    end;
+  except
+    // Fallback local caso o LicMan não esteja acessível em consulta pública sem login
+    LTenantDB := '';
+  end;
 
   LTmpl := TZeosConnectionPool.GetTampleteConnection;
   if SameText(LTmpl.Protocol, 'sqlite') then
@@ -311,7 +328,6 @@ begin
   if Trim(LMasterDB) = '' then
     LMasterDB := 'masterdb.db';
 
-  LTenantDB := '';
   LMasterConn := TZeosConnectionPool.GetInstance.Acquire(LMasterDB);
   try
     TRedeFraternaSchema.EnsureMasterSchema(LMasterConn);
@@ -320,8 +336,9 @@ begin
       LQryMaster.Connection := LMasterConn;
       LQryMaster.SQL.Text :=
         'SELECT tenant_dbname FROM tb_sistema ' +
-        'WHERE UPPER(tenant_alias) = UPPER(:alias) AND sistema = 1';
+        'WHERE UPPER(tenant_alias) = UPPER(:alias) AND sistema = :sis';
       LQryMaster.ParamByName('alias').AsString := LAlias;
+      LQryMaster.ParamByName('sis').AsInteger := REDEFRATERNA_ID;
       LQryMaster.Open;
       if not LQryMaster.IsEmpty then
         LTenantDB := Trim(LQryMaster.FieldByName('tenant_dbname').AsString);
@@ -1684,132 +1701,12 @@ end;
 
 class function TRedeFraternaControllers.OnAuthenticate(const AUser: string;
   const APass: string; const ATenantAlias: string; const AIdSistem: Integer;
-  out ADataBase: string; out AUserId: Integer; out AErrorMsg: string;
-  out ATipoUser: string; out ALogoBase64: string): Boolean;
-var
-  LMasterConn, LTenantConn: TZConnection;
-  LQryMaster, LQryTenant: TZQuery;
-  LSenhaHash, LMasterDB, LTenantDB: string;
-  LTmpl: TZConnection;
+  const ADataBase: string; out AUserId: Integer; out AErrorMsg: string;
+  out ATipoUser: string): Boolean;
 begin
-  Result := False;
-  AUserId := 0;
-  AErrorMsg := '';
-  ATipoUser := 'F';
-  ALogoBase64 := '';
-  ADataBase := '';
-
-  try
-    LTmpl := TZeosConnectionPool.GetTampleteConnection;
-    if SameText(LTmpl.Protocol, 'sqlite') then
-      LMasterDB := ExtractFileName(LTmpl.Database)
-    else
-      LMasterDB := LTmpl.Database;
-
-    if Trim(LMasterDB) = '' then
-      LMasterDB := 'masterdb.db';
-
-    LMasterConn := TZeosConnectionPool.GetInstance.Acquire(LMasterDB);
-    try
-      TRedeFraternaSchema.EnsureMasterSchema(LMasterConn);
-
-      LQryMaster := TZQuery.Create(nil);
-      try
-        LQryMaster.Connection := LMasterConn;
-        LQryMaster.SQL.Text :=
-          'SELECT tenant_dbname, tenant_dt_limite FROM tb_sistema ' +
-          'WHERE UPPER(tenant_alias) = UPPER(:alias) ' +
-          '  AND sistema = :sistema ' +
-          '  AND tenant_dt_limite >= :hoje';
-        LQryMaster.ParamByName('alias').AsString := Trim(ATenantAlias);
-        LQryMaster.ParamByName('sistema').AsInteger := AIdSistem;
-        LQryMaster.ParamByName('hoje').AsString := FormatDateTime('yyyy-mm-dd', Date);
-        LQryMaster.Open;
-
-        if LQryMaster.IsEmpty then
-        begin
-          AErrorMsg := 'Unidade / Tenant não encontrado no MasterDB.';
-          Exit(False);
-        end;
-
-        LTenantDB := Trim(LQryMaster.FieldByName('tenant_dbname').AsString);
-        if LTenantDB = '' then
-        begin
-          AErrorMsg := 'Banco de dados do cliente não configurado.';
-          Exit(False);
-        end;
-      finally
-        LQryMaster.Free;
-      end;
-    finally
-      TZeosConnectionPool.GetInstance.Release(LMasterConn);
-    end;
-
-    if SameText(LTmpl.Protocol, 'sqlite') then
-      ADataBase := ExtractFileName(LTenantDB)
-    else
-      ADataBase := LTenantDB;
-
-    LTenantConn := TZeosConnectionPool.GetInstance.Acquire(ADataBase);
-    try
-      TRedeFraternaSchema.EnsureTenantSchema(LTenantConn);
-
-      LSenhaHash := SHA1Print(SHA1String(APass));
-
-      LQryTenant := TZQuery.Create(nil);
-      try
-        LQryTenant.Connection := LTenantConn;
-        LQryTenant.SQL.Text := SQLSelectFrom('usuarios', LTenantConn.Protocol)
-          .Fields(['id', 'nome', 'senha_hash', 'tipo', 'ativo', 'centro_id'])
-          .WhereEqualParam('login', 'login')
-          .Build;
-        LQryTenant.ParamByName('login').AsString := Trim(AUser);
-        LQryTenant.Open;
-
-        if LQryTenant.IsEmpty then
-        begin
-          AErrorMsg := 'Usuário não encontrado.';
-          Exit(False);
-        end;
-
-        if not SameText(LQryTenant.FieldByName('ativo').AsString, 'S') then
-        begin
-          AErrorMsg := 'Usuário inativo no sistema.';
-          Exit(False);
-        end;
-
-        if (not SameText(LQryTenant.FieldByName('senha_hash').AsString, LSenhaHash)) and
-           (LQryTenant.FieldByName('senha_hash').AsString <> APass) then
-        begin
-          AErrorMsg := 'Senha incorreta.';
-          Exit(False);
-        end;
-
-        AUserId := LQryTenant.FieldByName('id').AsInteger;
-        ATipoUser := UpperCase(Trim(LQryTenant.FieldByName('tipo').AsString));
-        if not ((ATipoUser = 'A') or (ATipoUser = 'O') or (ATipoUser = 'F')) then
-          ATipoUser := 'F';
-
-        if (ATipoUser <> 'A') and (LQryTenant.FieldByName('centro_id').AsInteger <= 0) then
-        begin
-          AErrorMsg := 'Este usuário não está vinculado a nenhum Centro Espírita. Solicite ao Administrador da UME a vinculação do seu cadastro.';
-          Exit(False);
-        end;
-
-        Result := True;
-      finally
-        LQryTenant.Free;
-      end;
-    finally
-      TZeosConnectionPool.GetInstance.Release(LTenantConn);
-    end;
-  except
-    on E: Exception do
-    begin
-      AErrorMsg := 'Erro ao autenticar: ' + E.Message;
-      Result := False;
-    end;
-  end;
+  Result := TClassRedeFraternaServer.GetInstance.MeuSegundoModoAuth(
+    AUser, APass, ATenantAlias, AIdSistem, ADataBase, AUserId, AErrorMsg, ATipoUser
+  );
 end;
 
 { Endpoints Customizados }
@@ -2641,8 +2538,8 @@ begin
   // Middleware de isolamento de dados por Centro Espírita (exceto para Administrador 'A')
   THorse.Use(HorseCentroAccessMiddleware);
 
-  // Autenticação e perfil
-  RegisterLoginRoute('/api/login', OnAuthenticate);
+  // Autenticação e perfil (padrão BIHelper / TClassRedeFraternaServer)
+  RegisterLoginRoute('/api/login', TClassRedeFraternaServer.GetInstance.MeuSegundoModoAuth);
   THorse.Get('/api/meu-perfil', HandleGetMeuPerfil);
   THorse.Get('/api/configuracoes', HandleGetConfiguracoes);
   THorse.Put('/api/configuracoes', HandlePutConfiguracoes);

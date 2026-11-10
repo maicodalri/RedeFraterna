@@ -8,6 +8,7 @@ const STORAGE_CENTRO_ID_KEY = 'redefraterna_centro_id_v1';
 const STORAGE_CENTRO_NOME_KEY = 'redefraterna_centro_nome_v1';
 const STORAGE_ENTIDADE_NOME_KEY = 'redefraterna_entidade_nome_v1';
 const STORAGE_ENTIDADE_SIGLA_KEY = 'redefraterna_entidade_sigla_v1';
+const STORAGE_LOGO_KEY = 'redefraterna_company_logo_v1';
 
 createApp({
   data() {
@@ -17,6 +18,8 @@ createApp({
       currentUserType: localStorage.getItem(STORAGE_TYPE_KEY) || 'F',
       currentUserCentroId: Number(localStorage.getItem(STORAGE_CENTRO_ID_KEY) || 0),
       currentUserCentroNome: localStorage.getItem(STORAGE_CENTRO_NOME_KEY) || '',
+      companyLogo: (localStorage.getItem(STORAGE_LOGO_KEY) || '').trim(),
+      logoLoadFailed: false,
       loading: false,
       loginError: '',
       toasts: [],
@@ -455,7 +458,7 @@ createApp({
           usuario: this.loginForm.usuario.trim(),
           senha: this.loginForm.senha,
           tenantalias: (this.loginForm.tenantalias || 'redefraterna').trim(),
-          systemid: 1
+          systemid: 5
         };
 
         const res = await fetch('/api/login', {
@@ -472,6 +475,15 @@ createApp({
         this.token = data.token;
         this.currentUser = payload.usuario;
         this.currentUserType = data.user_type || 'F';
+
+        const logoVal = (data.logo || data.Logo || data.LOGO || '').trim();
+        this.companyLogo = logoVal;
+        this.logoLoadFailed = false;
+        if (logoVal) {
+          localStorage.setItem(STORAGE_LOGO_KEY, logoVal);
+        } else {
+          localStorage.removeItem(STORAGE_LOGO_KEY);
+        }
 
         localStorage.setItem(STORAGE_TOKEN_KEY, this.token);
         localStorage.setItem(STORAGE_USER_KEY, this.currentUser);
@@ -495,12 +507,15 @@ createApp({
       this.currentUserType = 'F';
       this.currentUserCentroId = 0;
       this.currentUserCentroNome = '';
+      this.companyLogo = '';
+      this.logoLoadFailed = false;
       this.fichaFamilia = null;
       localStorage.removeItem(STORAGE_TOKEN_KEY);
       localStorage.removeItem(STORAGE_USER_KEY);
       localStorage.removeItem(STORAGE_TYPE_KEY);
       localStorage.removeItem(STORAGE_CENTRO_ID_KEY);
       localStorage.removeItem(STORAGE_CENTRO_NOME_KEY);
+      localStorage.removeItem(STORAGE_LOGO_KEY);
       if (showMessage) {
         this.notify('Você saiu do sistema.', 'info');
       }
