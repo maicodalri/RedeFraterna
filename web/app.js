@@ -421,7 +421,8 @@ createApp({
         headers['Authorization'] = `Bearer ${this.token}`;
       }
 
-      const response = await fetch(url, Object.assign({}, options, { headers }));
+      const relUrl = url.startsWith('/') ? url.slice(1) : url;
+      const response = await fetch(relUrl, Object.assign({}, options, { headers }));
 
       if (response.status === 401) {
         this.doLogout(false);
@@ -461,7 +462,7 @@ createApp({
           systemid: 5
         };
 
-        const res = await fetch('/api/login', {
+        const res = await fetch('api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -545,7 +546,7 @@ createApp({
     async loadPublicEntidade(tenantAlias = '') {
       try {
         const tenant = (tenantAlias || this.loginForm.tenantalias || 'redefraterna').trim();
-        const res = await fetch(`/public/entidade?tenant=${encodeURIComponent(tenant)}`);
+        const res = await fetch(`public/entidade?tenant=${encodeURIComponent(tenant)}`);
         if (res.ok) {
           const data = await res.json();
           this.applyEntidadeData(data);
@@ -950,7 +951,7 @@ createApp({
     // =========================================================================
     getPublicAgendaUrl(centroId) {
       const tenant = encodeURIComponent(this.loginForm.tenantalias || 'redefraterna');
-      return `${window.location.origin}/?agenda_centro=${centroId}&tenant=${tenant}`;
+      return `${window.location.origin}${window.location.pathname}?agenda_centro=${centroId}&tenant=${tenant}`;
     },
 
     async copyPublicAgendaUrl(centroId) {
@@ -967,7 +968,7 @@ createApp({
       this.publicAgendaLoading = true;
       this.publicAgendaError = '';
       try {
-        const res = await fetch(`/public/agenda/${centroId}?tenant=${encodeURIComponent(tenantAlias || 'redefraterna')}`);
+        const res = await fetch(`public/agenda/${centroId}?tenant=${encodeURIComponent(tenantAlias || 'redefraterna')}`);
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data.error || 'Não foi possível carregar a agenda pública deste centro.');
@@ -1309,7 +1310,7 @@ createApp({
     // =========================================================================
     getPublicFeedUrl(centroId = 0) {
       const tenant = encodeURIComponent(this.loginForm.tenantalias || 'redefraterna');
-      let url = `${window.location.origin}/?feed=noticias&tenant=${tenant}`;
+      let url = `${window.location.origin}${window.location.pathname}?feed=noticias&tenant=${tenant}`;
       if (centroId && Number(centroId) > 0) {
         url += `&centro_id=${Number(centroId)}`;
       }
@@ -1318,7 +1319,7 @@ createApp({
 
     getPublicNoticiaUrl(noticiaId) {
       const tenant = encodeURIComponent(this.loginForm.tenantalias || 'redefraterna');
-      return `${window.location.origin}/?feed=noticias&noticia_id=${noticiaId}&tenant=${tenant}`;
+      return `${window.location.origin}${window.location.pathname}?feed=noticias&noticia_id=${noticiaId}&tenant=${tenant}`;
     },
 
     async copyPublicFeedUrl(centroId = 0) {
@@ -1346,7 +1347,7 @@ createApp({
       this.publicNoticiasError = '';
       try {
         const tenant = tenantAlias || this.loginForm.tenantalias || 'redefraterna';
-        const res = await fetch(`/public/noticias?tenant=${encodeURIComponent(tenant)}`);
+        const res = await fetch(`public/noticias?tenant=${encodeURIComponent(tenant)}`);
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data.error || 'Não foi possível carregar o feed público de notícias.');
