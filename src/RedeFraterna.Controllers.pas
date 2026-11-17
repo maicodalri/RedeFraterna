@@ -307,12 +307,16 @@ begin
   LTenantDB := '';
   LErrorMsg := '';
   LLogoB64 := '';
+  LTmpl := TZeosConnectionPool.GetTampleteConnection;
 
   // 1. Tenta resolver prioritariamente via License Manager da nova versão do TWAPI (TTwLicMan)
   try
     if TTwLicMan.ValidarTenant(LAlias, LTenantDB, LErrorMsg, LLogoB64) and (Trim(LTenantDB) <> '') then
     begin
-      Result := Trim(LTenantDB);
+      if SameText(LTmpl.Protocol, 'sqlite') then
+        Result := ExtractFileName(Trim(LTenantDB))
+      else
+        Result := Trim(LTenantDB);
       Exit;
     end;
   except
@@ -320,7 +324,6 @@ begin
     LTenantDB := '';
   end;
 
-  LTmpl := TZeosConnectionPool.GetTampleteConnection;
   if SameText(LTmpl.Protocol, 'sqlite') then
     LMasterDB := ExtractFileName(LTmpl.Database)
   else
@@ -352,7 +355,12 @@ begin
   if LTenantDB = '' then
   begin
     if SameText(LTmpl.Protocol, 'sqlite') then
-      Result := 'redefraterna_db.db'
+    begin
+      if FileExists(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0))) + 'RedeFraterna.db') then
+        Result := 'RedeFraterna.db'
+      else
+        Result := 'redefraterna_db.db';
+    end
     else
       Result := 'redefraterna_db';
   end
@@ -2325,10 +2333,9 @@ end;
 
 class procedure TRedeFraternaControllers.HandleGetAgendaPublicaCentro(Req: THorseRequest; Res: THorseResponse);
 var
-  LMasterConn, LTenantConn: TZConnection;
-  LQryMaster, LQry: TZQuery;
-  LTmpl: TZConnection;
-  LMasterDB, LTenantAlias, LTenantDB: string;
+  LTenantConn: TZConnection;
+  LQry: TZQuery;
+  LTenantDB: string;
   LCentroId: Integer;
   LResp: TJSONObject;
 begin
@@ -2339,48 +2346,7 @@ begin
     Exit;
   end;
 
-  LTenantAlias := Trim(Req.Query['tenant']);
-  if LTenantAlias = '' then
-    LTenantAlias := 'redefraterna';
-
-  LTmpl := TZeosConnectionPool.GetTampleteConnection;
-  if SameText(LTmpl.Protocol, 'sqlite') then
-    LMasterDB := ExtractFileName(LTmpl.Database)
-  else
-    LMasterDB := LTmpl.Database;
-  if Trim(LMasterDB) = '' then
-    LMasterDB := 'masterdb.db';
-
-  LTenantDB := '';
-  LMasterConn := TZeosConnectionPool.GetInstance.Acquire(LMasterDB);
-  try
-    TRedeFraternaSchema.EnsureMasterSchema(LMasterConn);
-    LQryMaster := TZQuery.Create(nil);
-    try
-      LQryMaster.Connection := LMasterConn;
-      LQryMaster.SQL.Text :=
-        'SELECT tenant_dbname FROM tb_sistema ' +
-        'WHERE UPPER(tenant_alias) = UPPER(:alias) AND sistema = 1';
-      LQryMaster.ParamByName('alias').AsString := LTenantAlias;
-      LQryMaster.Open;
-      if not LQryMaster.IsEmpty then
-        LTenantDB := Trim(LQryMaster.FieldByName('tenant_dbname').AsString);
-    finally
-      LQryMaster.Free;
-    end;
-  finally
-    TZeosConnectionPool.GetInstance.Release(LMasterConn);
-  end;
-
-  if LTenantDB = '' then
-  begin
-    if SameText(LTmpl.Protocol, 'sqlite') then
-      LTenantDB := 'redefraterna_db.db'
-    else
-      LTenantDB := 'redefraterna_db';
-  end
-  else if SameText(LTmpl.Protocol, 'sqlite') then
-    LTenantDB := ExtractFileName(LTenantDB);
+  LTenantDB := ResolveTenantDBName(Req.Query['tenant']);
 
   LTenantConn := TZeosConnectionPool.GetInstance.Acquire(LTenantDB);
   try
@@ -2428,56 +2394,14 @@ end;
 
 class procedure TRedeFraternaControllers.HandleGetNoticiasPublicas(Req: THorseRequest; Res: THorseResponse);
 var
-  LMasterConn, LTenantConn: TZConnection;
-  LQryMaster, LQry: TZQuery;
-  LTmpl: TZConnection;
-  LMasterDB, LTenantAlias, LTenantDB: string;
+  LTenantConn: TZConnection;
+  LQry: TZQuery;
+  LTenantDB: string;
   LCentroId: Integer;
   LResp: TJSONObject;
 begin
   LCentroId := StrToIntDef(Req.Query['centro_id'], 0);
-  LTenantAlias := Trim(Req.Query['tenant']);
-  if LTenantAlias = '' then
-    LTenantAlias := 'redefraterna';
-
-  LTmpl := TZeosConnectionPool.GetTampleteConnection;
-  if SameText(LTmpl.Protocol, 'sqlite') then
-    LMasterDB := ExtractFileName(LTmpl.Database)
-  else
-    LMasterDB := LTmpl.Database;
-  if Trim(LMasterDB) = '' then
-    LMasterDB := 'masterdb.db';
-
-  LTenantDB := '';
-  LMasterConn := TZeosConnectionPool.GetInstance.Acquire(LMasterDB);
-  try
-    TRedeFraternaSchema.EnsureMasterSchema(LMasterConn);
-    LQryMaster := TZQuery.Create(nil);
-    try
-      LQryMaster.Connection := LMasterConn;
-      LQryMaster.SQL.Text :=
-        'SELECT tenant_dbname FROM tb_sistema ' +
-        'WHERE UPPER(tenant_alias) = UPPER(:alias) AND sistema = 1';
-      LQryMaster.ParamByName('alias').AsString := LTenantAlias;
-      LQryMaster.Open;
-      if not LQryMaster.IsEmpty then
-        LTenantDB := Trim(LQryMaster.FieldByName('tenant_dbname').AsString);
-    finally
-      LQryMaster.Free;
-    end;
-  finally
-    TZeosConnectionPool.GetInstance.Release(LMasterConn);
-  end;
-
-  if LTenantDB = '' then
-  begin
-    if SameText(LTmpl.Protocol, 'sqlite') then
-      LTenantDB := 'redefraterna_db.db'
-    else
-      LTenantDB := 'redefraterna_db';
-  end
-  else if SameText(LTmpl.Protocol, 'sqlite') then
-    LTenantDB := ExtractFileName(LTenantDB);
+  LTenantDB := ResolveTenantDBName(Req.Query['tenant']);
 
   LTenantConn := TZeosConnectionPool.GetInstance.Acquire(LTenantDB);
   try

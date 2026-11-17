@@ -950,7 +950,8 @@ createApp({
     // CENTROS ESPÍRITAS + AGENDA SEMANAL (MESTRE / DETALHE) + LINK PÚBLICO
     // =========================================================================
     getPublicAgendaUrl(centroId) {
-      const tenant = encodeURIComponent(this.loginForm.tenantalias || 'redefraterna');
+      const activeTenant = (localStorage.getItem(STORAGE_TENANT_KEY) || this.loginForm.tenantalias || 'redefraterna').trim();
+      const tenant = encodeURIComponent(activeTenant);
       return `${window.location.origin}${window.location.pathname}?agenda_centro=${centroId}&tenant=${tenant}`;
     },
 
@@ -1041,7 +1042,7 @@ createApp({
       this.showCentroModal = true;
     },
 
-    addOrUpdateCentroAgendaItem() {
+    async addOrUpdateCentroAgendaItem() {
       const item = this.centroAgendaItemForm;
       if (!item.titulo || !item.titulo.trim()) {
         this.notify('Informe o título da atividade / exposição na agenda.', 'warning');
@@ -1065,12 +1066,50 @@ createApp({
         _modified: true
       };
 
+      // Se o Centro Espírita já existe no banco, persiste imediatamente em /api/agenda
+      // para que o Link Público já exiba o item na hora mesmo sem fechar o modal
+      const existingCentroId = Number(this.centroForm && this.centroForm.id ? this.centroForm.id : 0);
+      if (existingCentroId > 0) {
+        try {
+          const itemPayload = {
+            centro_id: existingCentroId,
+            dia_semana: copy.dia_semana,
+            horario_inicio: copy.horario_inicio,
+            horario_fim: copy.horario_fim,
+            tipo_evento: copy.tipo_evento,
+            titulo: copy.titulo,
+            responsavel: copy.responsavel,
+            sala_local: copy.sala_local,
+            descricao: copy.descricao
+          };
+          if (copy.id && Number(copy.id) > 0) {
+            await this.apiFetch(`/api/agenda/${copy.id}`, {
+              method: 'PUT',
+              body: JSON.stringify(itemPayload)
+            });
+          } else {
+            const savedItem = await this.apiFetch('/api/agenda', {
+              method: 'POST',
+              body: JSON.stringify(itemPayload)
+            });
+            if (savedItem && savedItem.id) {
+              copy.id = Number(savedItem.id);
+            }
+          }
+          copy._modified = false;
+          await Promise.all([this.loadAgenda(), this.loadDashboard()]);
+        } catch (err) {
+          this.notify(err.message, 'error');
+          return;
+        }
+      }
+
       if (this.centroAgendaEditIndex !== null && this.centroAgendaItems[this.centroAgendaEditIndex]) {
         this.centroAgendaItems.splice(this.centroAgendaEditIndex, 1, copy);
-        this.notify('Atividade atualizada na lista da agenda.', 'info');
+        this.notify('Atividade atualizada na agenda semanal!', 'success');
       } else {
         this.centroAgendaItems.push(copy);
-        this.notify('Atividade incluída na lista da agenda.', 'info');
+        this.notify('Atividade incluída na agenda semanal!', 'success');
       }
 
       this.centroAgendaItems.sort((a, b) => {
@@ -1121,7 +1160,7 @@ createApp({
 
         // Caso o usuário tenha preenchido o sub-formulário da agenda mas esquecido de clicar em "Incluir na Agenda", inclui automaticamente
         if (this.centroAgendaItemForm && this.centroAgendaItemForm.titulo && this.centroAgendaItemForm.titulo.trim()) {
-          this.addOrUpdateCentroAgendaItem();
+          await this.addOrUpdateCentroAgendaItem();
         }
 
         const isEdit = Boolean(this.centroForm.id);
@@ -1309,7 +1348,8 @@ createApp({
     // NOTÍCIAS E FEED PÚBLICO DE NOTÍCIAS
     // =========================================================================
     getPublicFeedUrl(centroId = 0) {
-      const tenant = encodeURIComponent(this.loginForm.tenantalias || 'redefraterna');
+      const activeTenant = (localStorage.getItem(STORAGE_TENANT_KEY) || this.loginForm.tenantalias || 'redefraterna').trim();
+      const tenant = encodeURIComponent(activeTenant);
       let url = `${window.location.origin}${window.location.pathname}?feed=noticias&tenant=${tenant}`;
       if (centroId && Number(centroId) > 0) {
         url += `&centro_id=${Number(centroId)}`;
@@ -1318,7 +1358,8 @@ createApp({
     },
 
     getPublicNoticiaUrl(noticiaId) {
-      const tenant = encodeURIComponent(this.loginForm.tenantalias || 'redefraterna');
+      const activeTenant = (localStorage.getItem(STORAGE_TENANT_KEY) || this.loginForm.tenantalias || 'redefraterna').trim();
+      const tenant = encodeURIComponent(activeTenant);
       return `${window.location.origin}${window.location.pathname}?feed=noticias&noticia_id=${noticiaId}&tenant=${tenant}`;
     },
 
