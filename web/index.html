@@ -1718,8 +1718,15 @@
                    @input="familiaForm.cpf_responsavel = formatCPFInput(familiaForm.cpf_responsavel)"
                    type="text" maxlength="14" required
                    placeholder="000.000.000-00"
-                   class="w-full px-3.5 py-2 rounded-lg border border-sky-300 bg-white text-sm font-mono focus:border-sky-600 outline-none" />
-            <p class="text-[11px] text-sky-700 mt-1">
+                   :class="familiaForm.cpf_responsavel.replace(/\D/g, '').length === 11
+                     ? (isValidCPF(familiaForm.cpf_responsavel) ? 'border-emerald-500 focus:border-emerald-600' : 'border-red-500 focus:border-red-600 bg-red-50/40')
+                     : 'border-sky-300 focus:border-sky-600'"
+                   class="w-full px-3.5 py-2 rounded-lg border bg-white text-sm font-mono outline-none" />
+            <p v-if="familiaForm.cpf_responsavel.replace(/\D/g, '').length === 11 && !isValidCPF(familiaForm.cpf_responsavel)"
+               class="text-[11px] text-red-600 font-semibold mt-1">
+              <i class="fa-solid fa-circle-exclamation mr-1"></i>CPF inválido. Verifique os dígitos informados.
+            </p>
+            <p v-else class="text-[11px] text-sky-700 mt-1">
               Garante que a família não seja cadastrada simultaneamente em mais de um Centro Espírita.
             </p>
           </div>
@@ -1884,7 +1891,14 @@
                 <input v-model="integranteForm.cpf"
                        @input="integranteForm.cpf = formatCPFInput(integranteForm.cpf)"
                        type="text" maxlength="14" placeholder="000.000.000-00"
-                       class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white font-mono outline-none focus:border-sky-600" />
+                       :class="integranteForm.cpf.replace(/\D/g, '').length === 11
+                         ? (isValidCPF(integranteForm.cpf) ? 'border-emerald-500 focus:border-emerald-600' : 'border-red-500 focus:border-red-600 bg-red-50/40')
+                         : 'border-slate-300 focus:border-sky-600'"
+                       class="w-full px-3 py-2 rounded-lg border text-xs bg-white font-mono outline-none" />
+                <p v-if="integranteForm.cpf.replace(/\D/g, '').length === 11 && !isValidCPF(integranteForm.cpf)"
+                   class="text-[10px] text-red-600 font-semibold mt-0.5">
+                  CPF inválido.
+                </p>
               </div>
               <div>
                 <label class="block text-[11px] font-semibold text-slate-600 uppercase mb-1">Data de Nascimento</label>
@@ -2456,8 +2470,17 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">CPF</label>
-            <input v-model="trabalhadorForm.cpf" type="text"
-                   class="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:border-sky-600" />
+            <input v-model="trabalhadorForm.cpf"
+                   @input="trabalhadorForm.cpf = formatCPFInput(trabalhadorForm.cpf)"
+                   type="text" maxlength="14" placeholder="000.000.000-00"
+                   :class="(trabalhadorForm.cpf || '').replace(/\D/g, '').length === 11
+                     ? (isValidCPF(trabalhadorForm.cpf) ? 'border-emerald-500 focus:border-emerald-600' : 'border-red-500 focus:border-red-600 bg-red-50/40')
+                     : 'border-slate-300 focus:border-sky-600'"
+                   class="w-full px-3.5 py-2 rounded-lg border text-sm font-mono outline-none" />
+            <p v-if="(trabalhadorForm.cpf || '').replace(/\D/g, '').length === 11 && !isValidCPF(trabalhadorForm.cpf)"
+               class="text-[11px] text-red-600 font-semibold mt-1">
+              <i class="fa-solid fa-circle-exclamation mr-1"></i>CPF inválido. Verifique os dígitos informados.
+            </p>
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Data de Nascimento</label>

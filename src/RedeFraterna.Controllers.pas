@@ -53,6 +53,7 @@ type
     class function ObterCentroIdDaFamilia(AConn: TZConnection; AFamiliaId: Integer): Integer;
     class function ObterRegistroJSON(AConn: TZConnection; const ATable: string; AId: Integer): TJSONObject;
     class function NormalizarCPF(const ACPF: string): string;
+    class function ValidarCPF(const ACPF: string): Boolean;
     class function ValidarCPFUnicoNoSistema(AConn: TZConnection; const ACPF: string;
       ACheckResponsavel: Boolean; AIgnorarFamiliaId, AIgnorarIntegranteId: Integer;
       out AErrorMessage: string): Boolean;
@@ -492,6 +493,57 @@ begin
     Result := Trim(ACPF);
 end;
 
+class function TRedeFraternaControllers.ValidarCPF(const ACPF: string): Boolean;
+var
+  I, LSum, LRest, LD1, LD2: Integer;
+  LDigits: string;
+  LAllEqual: Boolean;
+begin
+  Result := False;
+  LDigits := '';
+  for I := 1 to Length(ACPF) do
+    if ACPF[I] in ['0'..'9'] then
+      LDigits := LDigits + ACPF[I];
+
+  if Length(LDigits) <> 11 then
+    Exit;
+
+  LAllEqual := True;
+  for I := 2 to 11 do
+    if LDigits[I] <> LDigits[1] then
+    begin
+      LAllEqual := False;
+      Break;
+    end;
+  if LAllEqual then
+    Exit;
+
+  // 1º dígito verificador
+  LSum := 0;
+  for I := 1 to 9 do
+    LSum := LSum + (Ord(LDigits[I]) - Ord('0')) * (11 - I);
+  LRest := LSum mod 11;
+  if LRest < 2 then
+    LD1 := 0
+  else
+    LD1 := 11 - LRest;
+
+  if LD1 <> (Ord(LDigits[10]) - Ord('0')) then
+    Exit;
+
+  // 2º dígito verificador
+  LSum := 0;
+  for I := 1 to 10 do
+    LSum := LSum + (Ord(LDigits[I]) - Ord('0')) * (12 - I);
+  LRest := LSum mod 11;
+  if LRest < 2 then
+    LD2 := 0
+  else
+    LD2 := 11 - LRest;
+
+  Result := LD2 = (Ord(LDigits[11]) - Ord('0'));
+end;
+
 class function TRedeFraternaControllers.ValidarCPFUnicoNoSistema(AConn: TZConnection;
   const ACPF: string; ACheckResponsavel: Boolean; AIgnorarFamiliaId, AIgnorarIntegranteId: Integer;
   out AErrorMessage: string): Boolean;
@@ -510,10 +562,10 @@ begin
     if LCPFNorm[I] in ['0'..'9'] then
       LDigits := LDigits + LCPFNorm[I];
 
-  if Length(LDigits) <> 11 then
+  if not ValidarCPF(LDigits) then
   begin
     Result := False;
-    AErrorMessage := Format('O CPF informado (%s) é inválido. Informe os 11 dígitos do CPF.', [ACPF]);
+    AErrorMessage := Format('O CPF informado (%s) é inválido. Verifique os dígitos verificadores informados.', [ACPF]);
     Exit;
   end;
 
@@ -868,6 +920,7 @@ class procedure TRedeFraternaControllers.TrabalhadoresBeforeCreate(Sender: TTWAp
   var DBConn: TZConnection);
 var
   LCentroId: Integer;
+  LCPF: string;
 begin
   AAllow := True;
   if GCurrentUser.UserType = 'F' then
@@ -897,6 +950,18 @@ begin
     Exit;
   end;
 
+  LCPF := NormalizarCPF(GetJSONStrDef(AJSONObject, 'cpf', ''));
+  if LCPF <> '' then
+  begin
+    if not ValidarCPF(LCPF) then
+    begin
+      AAllow := False;
+      AErrorMessage := Format('O CPF informado (%s) é inválido. Verifique os dígitos verificadores informados.', [LCPF]);
+      Exit;
+    end;
+    AJSONObject.Strings['cpf'] := LCPF;
+  end;
+
   if AJSONObject.Find('ativo') = nil then
     AJSONObject.Strings['ativo'] := 'S';
 end;
@@ -906,6 +971,7 @@ class procedure TRedeFraternaControllers.TrabalhadoresBeforeUpdate(Sender: TTWAp
   var AErrorMessage: string; var DBConn: TZConnection);
 var
   LOldCentroId, LNewCentroId: Integer;
+  LCPF: string;
 begin
   AAllow := True;
   if GCurrentUser.UserType = 'F' then
@@ -932,6 +998,21 @@ begin
       Exit;
     end;
     AJSONObject.Integers['centro_id'] := GCurrentUser.CentroId;
+  end;
+
+  if AJSONObject.Find('cpf') <> nil then
+  begin
+    LCPF := NormalizarCPF(GetJSONStrDef(AJSONObject, 'cpf', ''));
+    if LCPF <> '' then
+    begin
+      if not ValidarCPF(LCPF) then
+      begin
+        AAllow := False;
+        AErrorMessage := Format('O CPF informado (%s) é inválido. Verifique os dígitos verificadores informados.', [LCPF]);
+        Exit;
+      end;
+      AJSONObject.Strings['cpf'] := LCPF;
+    end;
   end;
 end;
 
