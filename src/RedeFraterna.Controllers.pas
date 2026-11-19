@@ -2628,7 +2628,7 @@ end;
 
 class procedure TRedeFraternaControllers.HandlePostDownload(Req: THorseRequest; Res: THorseResponse);
 const
-  MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+  MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 var
   LTokenData: TTokenData;
   LConn: TZConnection;
@@ -2702,7 +2702,7 @@ begin
     end;
     if LFileStream.Size > MAX_DOWNLOAD_BYTES then
     begin
-      Res.Status(400).Send('{"error": "O arquivo excede o limite máximo permitido de 25 MB."}').ContentType(CONTENT_TYPE_JSON);
+      Res.Status(400).Send('{"error": "O arquivo excede o limite máximo permitido de 50 MB."}').ContentType(CONTENT_TYPE_JSON);
       Exit;
     end;
 
@@ -2764,7 +2764,7 @@ end;
 
 class procedure TRedeFraternaControllers.HandlePutDownload(Req: THorseRequest; Res: THorseResponse);
 const
-  MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+  MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 var
   LTokenData: TTokenData;
   LConn: TZConnection;
@@ -2849,7 +2849,7 @@ begin
       end;
       if LFileStream.Size > MAX_DOWNLOAD_BYTES then
       begin
-        Res.Status(400).Send('{"error": "O arquivo excede o limite máximo permitido de 25 MB."}').ContentType(CONTENT_TYPE_JSON);
+        Res.Status(400).Send('{"error": "O arquivo excede o limite máximo permitido de 50 MB."}').ContentType(CONTENT_TYPE_JSON);
         Exit;
       end;
     end;

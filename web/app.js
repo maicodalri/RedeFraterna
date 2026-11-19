@@ -1737,9 +1737,9 @@ createApp({
     onSelectDownloadFile(event) {
       const file = event && event.target && event.target.files ? event.target.files[0] : null;
       if (!file) return;
-      const maxBytes = 25 * 1024 * 1024;
+      const maxBytes = 50 * 1024 * 1024;
       if (file.size > maxBytes) {
-        this.notify('O arquivo selecionado ultrapassa o limite de 25 MB.', 'error');
+        this.notify('O arquivo selecionado ultrapassa o limite máximo de 50 MB.', 'error');
         event.target.value = '';
         return;
       }
