@@ -449,6 +449,28 @@ begin
     .AddDateTime('atualizado_em', False, True);
   CreateTableIfNotExists(AConn, LBuilder);
 
+  // 11. Tabela: downloads (Arquivos Públicos armazenados no Banco de Dados - gerenciados por Administradores)
+  LBuilder := SQLCreateTable('downloads', LProtocol)
+    .IfNotExists
+    .AddPrimaryKey('id', True)
+    .AddInteger('centro_id', False)                  // NULL ou 0 = Geral da Mantenedora; > 0 = Vinculado a um Centro Espírita
+    .AddVarchar('titulo', 200, True)
+    .AddText('descricao')
+    .AddVarchar('categoria', 50, True, 'DOCUMENTO')  // DOCUMENTO, FORMULARIO, ESTUDO, APOSTILA, LIVRO, OUTRO
+    .AddVarchar('nome_arquivo', 255, True)
+    .AddVarchar('mime_type', 120, True, 'application/octet-stream')
+    .AddInteger('tamanho_bytes', True, '0')
+    .AddBlob('arquivo_conteudo', True)
+    .AddVarchar('publico', 1, True, 'S')             // S = Aberto ao Público, N = Oculto / Privado
+    .AddInteger('downloads_count', True, '0')
+    .AddInteger('usuario_id', False)
+    .AddVarchar('usuario_nome', 100)
+    .AddVarchar('ativo', 1, True, 'S')
+    .AddDateTime('criado_em', False, True);
+  CreateTableIfNotExists(AConn, LBuilder);
+  CreateIndexSafe(AConn, LBuilder.BuildCreateIndex('idx_downloads_publico', ['publico', 'ativo']));
+  CreateIndexSafe(AConn, LBuilder.BuildCreateIndex('idx_downloads_centro', ['centro_id']));
+
   // Popula dados iniciais se o banco estiver vazio
   TRedeFraternaSeeds.SeedInitialData(AConn);
 

@@ -66,6 +66,15 @@ createApp({
       publicFiltroCategoria: '',
       publicFiltroCentroId: 0,
 
+      // Estado da Página Pública de Downloads (sem login)
+      publicDownloadsMode: false,
+      publicDownloadsLoading: false,
+      publicDownloadsError: '',
+      publicDownloadsList: [],
+      publicDownloadFiltroTexto: '',
+      publicDownloadFiltroCategoria: '',
+      publicDownloadFiltroCentroId: 0,
+
       // Dados carregados da API
       dashboard: {
         total_centros: 0,
@@ -80,6 +89,7 @@ createApp({
       trabalhadoresList: [],
       agendaList: [],
       noticiasList: [],
+      downloadsList: [],
       familiasList: [],
       auxiliosList: [],
       logsList: [],
@@ -106,10 +116,23 @@ createApp({
       filtroNoticiaCentroId: 0,
       filtroNoticiaPublicado: '',
 
+      filtroDownloadTexto: '',
+      filtroDownloadCategoria: '',
+      filtroDownloadCentroId: 0,
+      filtroDownloadPublico: '',
+
       filtroLogFamiliaId: 0,
       filtroLogTexto: '',
 
       // Constantes de domínio
+      categoriasDownload: [
+        { value: 'DOCUMENTO', label: 'Documento / Estatuto' },
+        { value: 'FORMULARIO', label: 'Formulário / Ficha' },
+        { value: 'ESTUDO', label: 'Material de Estudo' },
+        { value: 'APOSTILA', label: 'Apostila / Roteiro' },
+        { value: 'LIVRO', label: 'Livro / Publicação' },
+        { value: 'OUTRO', label: 'Outro Arquivo' }
+      ],
       categoriasNoticia: [
         { value: 'COMUNICADO', label: 'Comunicado' },
         { value: 'EVENTO', label: 'Evento / Encontro' },
@@ -187,6 +210,10 @@ createApp({
 
       showNoticiaModal: false,
       noticiaForm: {},
+
+      showDownloadModal: false,
+      downloadForm: {},
+      savingDownload: false,
 
       showUsuarioModal: false,
       usuarioForm: {},
@@ -355,6 +382,49 @@ createApp({
         }
         return true;
       });
+    },
+
+    filteredDownloads() {
+      const q = (this.filtroDownloadTexto || '').toLowerCase().trim();
+      return this.downloadsList.filter(d => {
+        if (this.filtroDownloadCategoria && d.categoria !== this.filtroDownloadCategoria) {
+          return false;
+        }
+        if (this.filtroDownloadPublico && (d.publico || 'S') !== this.filtroDownloadPublico) {
+          return false;
+        }
+        if (this.filtroDownloadCentroId === -1 && Number(d.centro_id || 0) > 0) {
+          return false;
+        }
+        if (this.filtroDownloadCentroId > 0 && Number(d.centro_id || 0) !== Number(this.filtroDownloadCentroId)) {
+          return false;
+        }
+        if (q) {
+          const hay = `${d.titulo || ''} ${d.descricao || ''} ${d.nome_arquivo || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    },
+
+    filteredPublicDownloads() {
+      const q = (this.publicDownloadFiltroTexto || '').toLowerCase().trim();
+      return this.publicDownloadsList.filter(d => {
+        if (this.publicDownloadFiltroCategoria && d.categoria !== this.publicDownloadFiltroCategoria) {
+          return false;
+        }
+        if (this.publicDownloadFiltroCentroId === -1 && Number(d.centro_id || 0) > 0) {
+          return false;
+        }
+        if (this.publicDownloadFiltroCentroId > 0 && Number(d.centro_id || 0) !== Number(this.publicDownloadFiltroCentroId)) {
+          return false;
+        }
+        if (q) {
+          const hay = `${d.titulo || ''} ${d.descricao || ''} ${d.nome_arquivo || ''} ${d.centro_nome || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
     }
   },
 
@@ -364,11 +434,22 @@ createApp({
     const feedParam = (params.get('feed') || '').toLowerCase();
     const noticiasParam = params.get('noticias');
     const noticiaIdParam = Number(params.get('noticia_id') || 0);
+    const downloadsParam = params.get('downloads');
     const tenantParam = params.get('tenant') || this.loginForm.tenantalias || 'redefraterna';
 
     if (agendaCentroId > 0) {
       this.publicAgendaMode = true;
       this.loadPublicAgenda(agendaCentroId, tenantParam);
+      return;
+    }
+
+    if (downloadsParam === '1' || feedParam === 'downloads') {
+      this.publicDownloadsMode = true;
+      const centroFilter = Number(params.get('centro_id') || 0);
+      if (centroFilter > 0) {
+        this.publicDownloadFiltroCentroId = centroFilter;
+      }
+      this.loadPublicDownloads(tenantParam);
       return;
     }
 
@@ -627,6 +708,8 @@ createApp({
         await this.loadAgenda();
       } else if (tab === 'noticias') {
         await this.loadNoticias();
+      } else if (tab === 'downloads' && this.currentUserType === 'A') {
+        await this.loadDownloads();
       } else if (tab === 'logs') {
         await this.loadLogs();
       } else if (tab === 'usuarios' && this.currentUserType === 'A') {
@@ -649,6 +732,7 @@ createApp({
         ];
         if (this.currentUserType === 'A') {
           tasks.push(this.loadUsuarios());
+          tasks.push(this.loadDownloads());
         }
         await Promise.all(tasks);
       } catch (err) {
@@ -1549,6 +1633,241 @@ createApp({
         case 'ARTIGO': return 'bg-purple-100 text-purple-800';
         default: return 'bg-slate-200 text-slate-800';
       }
+    },
+
+    // =========================================================================
+    // DOWNLOADS PÚBLICOS (GERENCIAMENTO EXCLUSIVO ADMINISTRADOR)
+    // =========================================================================
+    getPublicDownloadsPageUrl(centroId = 0) {
+      const activeTenant = (localStorage.getItem(STORAGE_TENANT_KEY) || this.loginForm.tenantalias || 'redefraterna').trim();
+      const tenant = encodeURIComponent(activeTenant);
+      let url = `${window.location.origin}${window.location.pathname}?downloads=1&tenant=${tenant}`;
+      if (centroId && Number(centroId) > 0) {
+        url += `&centro_id=${Number(centroId)}`;
+      }
+      return url;
+    },
+
+    getPublicDownloadFileUrl(downloadId) {
+      const activeTenant = (localStorage.getItem(STORAGE_TENANT_KEY) || this.loginForm.tenantalias || 'redefraterna').trim();
+      const tenant = encodeURIComponent(activeTenant);
+      return new URL(`public/downloads/${downloadId}/arquivo?tenant=${tenant}`, window.location.href).toString();
+    },
+
+    async copyPublicDownloadsPageUrl(centroId = 0) {
+      const url = this.getPublicDownloadsPageUrl(centroId);
+      try {
+        await navigator.clipboard.writeText(url);
+        this.notify('Link público da seção de Downloads copiado para a área de transferência!', 'success');
+      } catch (e) {
+        prompt('Copie o link público da seção de Downloads abaixo:', url);
+      }
+    },
+
+    async copyPublicDownloadFileUrl(downloadId) {
+      const url = this.getPublicDownloadFileUrl(downloadId);
+      try {
+        await navigator.clipboard.writeText(url);
+        this.notify('Link direto do arquivo copiado para a área de transferência!', 'success');
+      } catch (e) {
+        prompt('Copie o link direto deste arquivo abaixo:', url);
+      }
+    },
+
+    async loadDownloads() {
+      if (this.currentUserType !== 'A') return;
+      this.downloadsList = await this.apiFetch('/api/downloads');
+    },
+
+    async loadPublicDownloads(tenantAlias) {
+      this.publicDownloadsLoading = true;
+      this.publicDownloadsError = '';
+      try {
+        const tenant = tenantAlias || this.loginForm.tenantalias || 'redefraterna';
+        const res = await fetch(`public/downloads?tenant=${encodeURIComponent(tenant)}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Não foi possível carregar a seção pública de downloads.');
+        }
+        this.publicDownloadsList = Array.isArray(data.downloads) ? data.downloads : [];
+        this.publicCentrosList = Array.isArray(data.centros) ? data.centros : [];
+        if (data && data.entidade) {
+          this.applyEntidadeData(data.entidade);
+        }
+        document.title = `Downloads Públicos — ${this.entidade.nome_mantenedora}`;
+      } catch (err) {
+        this.publicDownloadsError = err.message;
+      } finally {
+        this.publicDownloadsLoading = false;
+      }
+    },
+
+    openDownloadModal(d = null) {
+      if (this.currentUserType !== 'A') return;
+      if (d && d.id) {
+        this.downloadForm = {
+          id: d.id,
+          centro_id: Number(d.centro_id || 0),
+          titulo: d.titulo || '',
+          descricao: d.descricao || '',
+          categoria: d.categoria || 'DOCUMENTO',
+          publico: d.publico || 'S',
+          nome_arquivo: d.nome_arquivo || '',
+          mime_type: d.mime_type || '',
+          tamanho_bytes: Number(d.tamanho_bytes || 0),
+          arquivo_base64: ''
+        };
+      } else {
+        this.downloadForm = {
+          id: 0,
+          centro_id: 0,
+          titulo: '',
+          descricao: '',
+          categoria: 'DOCUMENTO',
+          publico: 'S',
+          nome_arquivo: '',
+          mime_type: '',
+          tamanho_bytes: 0,
+          arquivo_base64: ''
+        };
+      }
+      this.showDownloadModal = true;
+    },
+
+    onSelectDownloadFile(event) {
+      const file = event && event.target && event.target.files ? event.target.files[0] : null;
+      if (!file) return;
+      const maxBytes = 25 * 1024 * 1024;
+      if (file.size > maxBytes) {
+        this.notify('O arquivo selecionado ultrapassa o limite de 25 MB.', 'error');
+        event.target.value = '';
+        return;
+      }
+      if (file.size === 0) {
+        this.notify('O arquivo selecionado está vazio.', 'error');
+        event.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.downloadForm.nome_arquivo = file.name;
+        this.downloadForm.mime_type = file.type || 'application/octet-stream';
+        this.downloadForm.tamanho_bytes = file.size;
+        this.downloadForm.arquivo_base64 = reader.result || '';
+        if (!this.downloadForm.titulo) {
+          this.downloadForm.titulo = file.name.replace(/\.[^/.]+$/, '');
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+
+    async saveDownload() {
+      if (this.currentUserType !== 'A') return;
+      const isEdit = Boolean(this.downloadForm.id);
+      if (!isEdit && !this.downloadForm.arquivo_base64) {
+        this.notify('Selecione um arquivo para armazenar no banco de dados.', 'warning');
+        return;
+      }
+      this.savingDownload = true;
+      try {
+        const payload = {
+          centro_id: Number(this.downloadForm.centro_id || 0),
+          titulo: this.downloadForm.titulo,
+          descricao: this.downloadForm.descricao,
+          categoria: this.downloadForm.categoria,
+          publico: this.downloadForm.publico
+        };
+        if (this.downloadForm.arquivo_base64) {
+          payload.nome_arquivo = this.downloadForm.nome_arquivo;
+          payload.mime_type = this.downloadForm.mime_type;
+          payload.arquivo_base64 = this.downloadForm.arquivo_base64;
+        }
+
+        await this.apiFetch(isEdit ? `/api/downloads/${this.downloadForm.id}` : '/api/downloads', {
+          method: isEdit ? 'PUT' : 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        this.showDownloadModal = false;
+        this.notify(isEdit ? 'Arquivo atualizado no banco de dados!' : 'Arquivo salvo no banco de dados e disponível para download!', 'success');
+        await this.loadDownloads();
+      } catch (err) {
+        this.notify(err.message, 'error');
+      } finally {
+        this.savingDownload = false;
+      }
+    },
+
+    async togglePublicoDownload(d) {
+      if (this.currentUserType !== 'A') return;
+      const novoStatus = (d.publico || 'S') === 'S' ? 'N' : 'S';
+      try {
+        await this.apiFetch(`/api/downloads/${d.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            centro_id: Number(d.centro_id || 0),
+            titulo: d.titulo,
+            descricao: d.descricao || '',
+            categoria: d.categoria || 'DOCUMENTO',
+            publico: novoStatus
+          })
+        });
+        d.publico = novoStatus;
+        this.notify(
+          novoStatus === 'S'
+            ? 'Arquivo liberado na seção pública de Downloads!'
+            : 'Arquivo ocultado da seção pública de Downloads.',
+          'info'
+        );
+      } catch (err) {
+        this.notify(err.message, 'error');
+      }
+    },
+
+    async deleteDownload(d) {
+      if (this.currentUserType !== 'A') return;
+      if (!confirm(`Deseja realmente excluir o arquivo "${d.titulo}"?`)) return;
+      try {
+        await this.apiFetch(`/api/downloads/${d.id}`, { method: 'DELETE' });
+        this.notify('Arquivo excluído da seção de downloads.', 'success');
+        await this.loadDownloads();
+      } catch (err) {
+        this.notify(err.message, 'error');
+      }
+    },
+
+    formatFileSize(bytes) {
+      const b = Number(bytes || 0);
+      if (b < 1024) return `${b} B`;
+      if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+      return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+    },
+
+    formatCategoriaDownload(cat) {
+      const found = this.categoriasDownload.find(x => x.value === cat);
+      return found ? found.label : (cat || 'Documento');
+    },
+
+    downloadCategoriaBadge(cat) {
+      switch (cat) {
+        case 'FORMULARIO': return 'bg-sky-100 text-sky-800';
+        case 'ESTUDO': return 'bg-teal-100 text-teal-800';
+        case 'APOSTILA': return 'bg-indigo-100 text-indigo-800';
+        case 'LIVRO': return 'bg-purple-100 text-purple-800';
+        case 'OUTRO': return 'bg-slate-200 text-slate-800';
+        default: return 'bg-emerald-100 text-emerald-800';
+      }
+    },
+
+    downloadFileIcon(nomeArquivo) {
+      const ext = String(nomeArquivo || '').split('.').pop().toLowerCase();
+      if (ext === 'pdf') return 'fa-solid fa-file-pdf text-red-600';
+      if (['doc', 'docx', 'odt'].includes(ext)) return 'fa-solid fa-file-word text-blue-600';
+      if (['xls', 'xlsx', 'ods', 'csv'].includes(ext)) return 'fa-solid fa-file-excel text-emerald-600';
+      if (['ppt', 'pptx', 'odp'].includes(ext)) return 'fa-solid fa-file-powerpoint text-orange-600';
+      if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'fa-solid fa-file-image text-purple-600';
+      if (['zip', 'rar', '7z'].includes(ext)) return 'fa-solid fa-file-zipper text-amber-600';
+      return 'fa-solid fa-file-lines text-slate-600';
     },
 
     // =========================================================================

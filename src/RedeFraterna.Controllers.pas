@@ -16,7 +16,7 @@ unit RedeFraterna.Controllers;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, IniFiles, DB, fpjson, jsonparser, sha1,
+  Classes, SysUtils, StrUtils, IniFiles, DB, fpjson, jsonparser, sha1, Base64,
   Horse, Horse.Commons, ZConnection, ZDataset, DataSet.Serialize,
   twapi.Types, twapi.SQLBuilder, twapi.Controller, twapi.Controller.PoolConn,
   twapi.Auth, twapi.LicMan, twapi.TextFileLog,
@@ -145,6 +145,12 @@ type
     class procedure HandleGetEntidadePublica(Req: THorseRequest; Res: THorseResponse); static;
     class procedure HandleGetAgendaPublicaCentro(Req: THorseRequest; Res: THorseResponse); static;
     class procedure HandleGetNoticiasPublicas(Req: THorseRequest; Res: THorseResponse); static;
+    class procedure HandleGetDownloads(Req: THorseRequest; Res: THorseResponse); static;
+    class procedure HandlePostDownload(Req: THorseRequest; Res: THorseResponse); static;
+    class procedure HandlePutDownload(Req: THorseRequest; Res: THorseResponse); static;
+    class procedure HandleDeleteDownload(Req: THorseRequest; Res: THorseResponse); static;
+    class procedure HandleGetDownloadsPublicos(Req: THorseRequest; Res: THorseResponse); static;
+    class procedure HandleGetDownloadArquivoPublico(Req: THorseRequest; Res: THorseResponse); static;
 
     class procedure RegisterAllRoutes;
     class procedure FinalizeControllers;
@@ -2528,6 +2534,558 @@ begin
   end;
 end;
 
+function DecodeBase64ToStream(const ABase64: string; AOutStream: TMemoryStream): Boolean;
+var
+  LClean: string;
+  LPosComma: Integer;
+  LInStream: TStringStream;
+  LDecoder: TBase64DecodingStream;
+begin
+  Result := False;
+  AOutStream.Clear;
+  LClean := Trim(ABase64);
+  if LClean = '' then
+    Exit;
+
+  // Remove prefixo data URI caso venha do navegador (ex: data:application/pdf;base64,...)
+  LPosComma := Pos(';base64,', LowerCase(LClean));
+  if LPosComma > 0 then
+    LClean := Copy(LClean, LPosComma + 8, Length(LClean))
+  else
+  begin
+    LPosComma := Pos(',', LClean);
+    if (LPosComma > 0) and (Pos('data:', LowerCase(Copy(LClean, 1, LPosComma))) = 1) then
+      LClean := Copy(LClean, LPosComma + 1, Length(LClean));
+  end;
+
+  LClean := Trim(LClean);
+  if LClean = '' then
+    Exit;
+
+  LInStream := TStringStream.Create(LClean);
+  try
+    LDecoder := TBase64DecodingStream.Create(LInStream, bdmMIME);
+    try
+      AOutStream.CopyFrom(LDecoder, LDecoder.Size);
+      AOutStream.Position := 0;
+      Result := AOutStream.Size > 0;
+    finally
+      LDecoder.Free;
+    end;
+  finally
+    LInStream.Free;
+  end;
+end;
+
+class procedure TRedeFraternaControllers.HandleGetDownloads(Req: THorseRequest; Res: THorseResponse);
+var
+  LTokenData: TTokenData;
+  LConn: TZConnection;
+  LQry: TZQuery;
+  LArr: TJSONArray;
+begin
+  LTokenData := ValidateToken(GetTokenByReq(Req));
+  if not LTokenData.IsValid then
+  begin
+    Res.Status(401).Send('{"error": "Token inválido ou expirado."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+  if not GCurrentUser.IsAdmin then
+  begin
+    Res.Status(403).Send('{"error": "Acesso negado: apenas Administradores podem gerenciar a seção de Downloads."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LConn := TZeosConnectionPool.GetInstance.Acquire(LTokenData.Database);
+  try
+    TRedeFraternaSchema.EnsureTenantSchema(LConn);
+    LQry := TZQuery.Create(nil);
+    try
+      LQry.Connection := LConn;
+      LQry.SQL.Text :=
+        'SELECT d.id, d.centro_id, d.titulo, d.descricao, d.categoria, d.nome_arquivo, ' +
+        '       d.mime_type, d.tamanho_bytes, d.publico, d.downloads_count, d.usuario_id, ' +
+        '       d.usuario_nome, d.ativo, d.criado_em, ' +
+        '       c.nome AS centro_nome, c.sigla AS centro_sigla ' +
+        'FROM downloads d ' +
+        'LEFT JOIN centros_espiritas c ON c.id = d.centro_id ' +
+        'WHERE d.ativo = ''S'' ' +
+        'ORDER BY d.id DESC';
+      LQry.Open;
+      LArr := LQry.ToJSONArray;
+      try
+        Res.Send(LArr.AsJSON).ContentType(CONTENT_TYPE_JSON);
+      finally
+        LArr.Free;
+      end;
+    finally
+      LQry.Free;
+    end;
+  finally
+    TZeosConnectionPool.GetInstance.Release(LConn);
+  end;
+end;
+
+class procedure TRedeFraternaControllers.HandlePostDownload(Req: THorseRequest; Res: THorseResponse);
+const
+  MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+var
+  LTokenData: TTokenData;
+  LConn: TZConnection;
+  LQry: TZQuery;
+  LBody: TJSONObject;
+  LParser: TJSONParser;
+  LTitulo, LDescricao, LCategoria, LNomeArquivo, LMimeType, LPublico, LBase64: string;
+  LCentroId, LNewId: Integer;
+  LFileStream: TMemoryStream;
+  LObj: TJSONObject;
+begin
+  LTokenData := ValidateToken(GetTokenByReq(Req));
+  if not LTokenData.IsValid then
+  begin
+    Res.Status(401).Send('{"error": "Token inválido ou expirado."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+  if not GCurrentUser.IsAdmin then
+  begin
+    Res.Status(403).Send('{"error": "Acesso negado: apenas Administradores podem cadastrar arquivos para download."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LBody := nil;
+  try
+    LParser := TJSONParser.Create(Req.Body);
+    try
+      LBody := LParser.Parse as TJSONObject;
+    finally
+      LParser.Free;
+    end;
+  except
+    Res.Status(400).Send('{"error": "JSON inválido."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  if LBody = nil then
+  begin
+    Res.Status(400).Send('{"error": "Corpo da requisição vazio."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LFileStream := TMemoryStream.Create;
+  try
+    LTitulo := Trim(GetJSONStrDef(LBody, 'titulo', ''));
+    LDescricao := Trim(GetJSONStrDef(LBody, 'descricao', ''));
+    LCategoria := UpperCase(Trim(GetJSONStrDef(LBody, 'categoria', 'DOCUMENTO')));
+    if LCategoria = '' then LCategoria := 'DOCUMENTO';
+    LCentroId := GetJSONIntDef(LBody, 'centro_id', 0);
+    LNomeArquivo := ExtractFileName(Trim(GetJSONStrDef(LBody, 'nome_arquivo', '')));
+    LMimeType := Trim(GetJSONStrDef(LBody, 'mime_type', 'application/octet-stream'));
+    if LMimeType = '' then LMimeType := 'application/octet-stream';
+    LPublico := UpperCase(Trim(GetJSONStrDef(LBody, 'publico', 'S')));
+    if LPublico <> 'N' then LPublico := 'S';
+    LBase64 := GetJSONStrDef(LBody, 'arquivo_base64', '');
+
+    if LTitulo = '' then
+    begin
+      Res.Status(400).Send('{"error": "Informe o título do arquivo para download."}').ContentType(CONTENT_TYPE_JSON);
+      Exit;
+    end;
+    if LNomeArquivo = '' then
+    begin
+      Res.Status(400).Send('{"error": "Selecione um arquivo válido para enviar."}').ContentType(CONTENT_TYPE_JSON);
+      Exit;
+    end;
+    if not DecodeBase64ToStream(LBase64, LFileStream) then
+    begin
+      Res.Status(400).Send('{"error": "Arquivo inválido ou vazio. Selecione novamente o arquivo."}').ContentType(CONTENT_TYPE_JSON);
+      Exit;
+    end;
+    if LFileStream.Size > MAX_DOWNLOAD_BYTES then
+    begin
+      Res.Status(400).Send('{"error": "O arquivo excede o limite máximo permitido de 25 MB."}').ContentType(CONTENT_TYPE_JSON);
+      Exit;
+    end;
+
+    LConn := TZeosConnectionPool.GetInstance.Acquire(LTokenData.Database);
+    try
+      TRedeFraternaSchema.EnsureTenantSchema(LConn);
+      LQry := TZQuery.Create(nil);
+      try
+        LQry.Connection := LConn;
+        LQry.SQL.Text :=
+          'INSERT INTO downloads (centro_id, titulo, descricao, categoria, nome_arquivo, mime_type, tamanho_bytes, arquivo_conteudo, publico, downloads_count, usuario_id, usuario_nome, ativo) ' +
+          'VALUES (:centro_id, :titulo, :descricao, :categoria, :nome_arquivo, :mime_type, :tamanho_bytes, :arquivo_conteudo, :publico, 0, :usuario_id, :usuario_nome, ''S'')';
+        if LCentroId > 0 then
+          LQry.ParamByName('centro_id').AsInteger := LCentroId
+        else
+          LQry.ParamByName('centro_id').AsInteger := 0;
+        LQry.ParamByName('titulo').AsString := LTitulo;
+        LQry.ParamByName('descricao').AsString := LDescricao;
+        LQry.ParamByName('categoria').AsString := LCategoria;
+        LQry.ParamByName('nome_arquivo').AsString := LNomeArquivo;
+        LQry.ParamByName('mime_type').AsString := LMimeType;
+        LQry.ParamByName('tamanho_bytes').AsInteger := LFileStream.Size;
+        LFileStream.Position := 0;
+        LQry.ParamByName('arquivo_conteudo').LoadFromStream(LFileStream, ftBlob);
+        LQry.ParamByName('publico').AsString := LPublico;
+        LQry.ParamByName('usuario_id').AsInteger := GCurrentUser.UserId;
+        LQry.ParamByName('usuario_nome').AsString := GCurrentUser.Username;
+        LQry.ExecSQL;
+
+        LQry.SQL.Text := 'SELECT MAX(id) AS new_id FROM downloads';
+        LQry.Open;
+        LNewId := LQry.FieldByName('new_id').AsInteger;
+        LQry.Close;
+
+        LQry.SQL.Text :=
+          'SELECT d.id, d.centro_id, d.titulo, d.descricao, d.categoria, d.nome_arquivo, ' +
+          '       d.mime_type, d.tamanho_bytes, d.publico, d.downloads_count, d.usuario_id, ' +
+          '       d.usuario_nome, d.ativo, d.criado_em ' +
+          'FROM downloads d WHERE d.id = :id';
+        LQry.ParamByName('id').AsInteger := LNewId;
+        LQry.Open;
+        LObj := LQry.ToJSONObject;
+        try
+          Res.Status(201).Send(LObj.AsJSON).ContentType(CONTENT_TYPE_JSON);
+        finally
+          LObj.Free;
+        end;
+      finally
+        LQry.Free;
+      end;
+    finally
+      TZeosConnectionPool.GetInstance.Release(LConn);
+    end;
+  finally
+    LFileStream.Free;
+    LBody.Free;
+  end;
+end;
+
+class procedure TRedeFraternaControllers.HandlePutDownload(Req: THorseRequest; Res: THorseResponse);
+const
+  MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+var
+  LTokenData: TTokenData;
+  LConn: TZConnection;
+  LQry: TZQuery;
+  LBody, LObj: TJSONObject;
+  LParser: TJSONParser;
+  LId, LCentroId: Integer;
+  LTitulo, LDescricao, LCategoria, LNomeArquivo, LMimeType, LPublico, LBase64: string;
+  LHasNewFile: Boolean;
+  LFileStream: TMemoryStream;
+begin
+  LTokenData := ValidateToken(GetTokenByReq(Req));
+  if not LTokenData.IsValid then
+  begin
+    Res.Status(401).Send('{"error": "Token inválido ou expirado."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+  if not GCurrentUser.IsAdmin then
+  begin
+    Res.Status(403).Send('{"error": "Acesso negado: apenas Administradores podem alterar arquivos de download."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LId := StrToIntDef(Req.Params['id'], 0);
+  if LId <= 0 then
+  begin
+    Res.Status(400).Send('{"error": "ID do download inválido."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LBody := nil;
+  try
+    LParser := TJSONParser.Create(Req.Body);
+    try
+      LBody := LParser.Parse as TJSONObject;
+    finally
+      LParser.Free;
+    end;
+  except
+    Res.Status(400).Send('{"error": "JSON inválido."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  if LBody = nil then
+  begin
+    Res.Status(400).Send('{"error": "Corpo da requisição vazio."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LFileStream := TMemoryStream.Create;
+  try
+    LTitulo := Trim(GetJSONStrDef(LBody, 'titulo', ''));
+    LDescricao := Trim(GetJSONStrDef(LBody, 'descricao', ''));
+    LCategoria := UpperCase(Trim(GetJSONStrDef(LBody, 'categoria', 'DOCUMENTO')));
+    if LCategoria = '' then LCategoria := 'DOCUMENTO';
+    LCentroId := GetJSONIntDef(LBody, 'centro_id', 0);
+    LPublico := UpperCase(Trim(GetJSONStrDef(LBody, 'publico', 'S')));
+    if LPublico <> 'N' then LPublico := 'S';
+    LBase64 := Trim(GetJSONStrDef(LBody, 'arquivo_base64', ''));
+    LHasNewFile := LBase64 <> '';
+
+    if LTitulo = '' then
+    begin
+      Res.Status(400).Send('{"error": "Informe o título do arquivo para download."}').ContentType(CONTENT_TYPE_JSON);
+      Exit;
+    end;
+
+    if LHasNewFile then
+    begin
+      LNomeArquivo := ExtractFileName(Trim(GetJSONStrDef(LBody, 'nome_arquivo', '')));
+      LMimeType := Trim(GetJSONStrDef(LBody, 'mime_type', 'application/octet-stream'));
+      if LMimeType = '' then LMimeType := 'application/octet-stream';
+      if LNomeArquivo = '' then
+      begin
+        Res.Status(400).Send('{"error": "Nome do arquivo inválido."}').ContentType(CONTENT_TYPE_JSON);
+        Exit;
+      end;
+      if not DecodeBase64ToStream(LBase64, LFileStream) then
+      begin
+        Res.Status(400).Send('{"error": "Arquivo inválido ou vazio."}').ContentType(CONTENT_TYPE_JSON);
+        Exit;
+      end;
+      if LFileStream.Size > MAX_DOWNLOAD_BYTES then
+      begin
+        Res.Status(400).Send('{"error": "O arquivo excede o limite máximo permitido de 25 MB."}').ContentType(CONTENT_TYPE_JSON);
+        Exit;
+      end;
+    end;
+
+    LConn := TZeosConnectionPool.GetInstance.Acquire(LTokenData.Database);
+    try
+      TRedeFraternaSchema.EnsureTenantSchema(LConn);
+      LQry := TZQuery.Create(nil);
+      try
+        LQry.Connection := LConn;
+        LQry.SQL.Text := 'SELECT id FROM downloads WHERE id = :id AND ativo = ''S''';
+        LQry.ParamByName('id').AsInteger := LId;
+        LQry.Open;
+        if LQry.IsEmpty then
+        begin
+          Res.Status(404).Send('{"error": "Registro de download não encontrado."}').ContentType(CONTENT_TYPE_JSON);
+          Exit;
+        end;
+        LQry.Close;
+
+        if LHasNewFile then
+        begin
+          LQry.SQL.Text :=
+            'UPDATE downloads SET centro_id = :centro_id, titulo = :titulo, descricao = :descricao, ' +
+            '  categoria = :categoria, publico = :publico, nome_arquivo = :nome_arquivo, ' +
+            '  mime_type = :mime_type, tamanho_bytes = :tamanho_bytes, arquivo_conteudo = :arquivo_conteudo ' +
+            'WHERE id = :id';
+          LQry.ParamByName('nome_arquivo').AsString := LNomeArquivo;
+          LQry.ParamByName('mime_type').AsString := LMimeType;
+          LQry.ParamByName('tamanho_bytes').AsInteger := LFileStream.Size;
+          LFileStream.Position := 0;
+          LQry.ParamByName('arquivo_conteudo').LoadFromStream(LFileStream, ftBlob);
+        end
+        else
+        begin
+          LQry.SQL.Text :=
+            'UPDATE downloads SET centro_id = :centro_id, titulo = :titulo, descricao = :descricao, ' +
+            '  categoria = :categoria, publico = :publico ' +
+            'WHERE id = :id';
+        end;
+
+        if LCentroId > 0 then
+          LQry.ParamByName('centro_id').AsInteger := LCentroId
+        else
+          LQry.ParamByName('centro_id').AsInteger := 0;
+        LQry.ParamByName('titulo').AsString := LTitulo;
+        LQry.ParamByName('descricao').AsString := LDescricao;
+        LQry.ParamByName('categoria').AsString := LCategoria;
+        LQry.ParamByName('publico').AsString := LPublico;
+        LQry.ParamByName('id').AsInteger := LId;
+        LQry.ExecSQL;
+
+        LQry.SQL.Text :=
+          'SELECT d.id, d.centro_id, d.titulo, d.descricao, d.categoria, d.nome_arquivo, ' +
+          '       d.mime_type, d.tamanho_bytes, d.publico, d.downloads_count, d.usuario_id, ' +
+          '       d.usuario_nome, d.ativo, d.criado_em ' +
+          'FROM downloads d WHERE d.id = :id';
+        LQry.ParamByName('id').AsInteger := LId;
+        LQry.Open;
+        LObj := LQry.ToJSONObject;
+        try
+          Res.Send(LObj.AsJSON).ContentType(CONTENT_TYPE_JSON);
+        finally
+          LObj.Free;
+        end;
+      finally
+        LQry.Free;
+      end;
+    finally
+      TZeosConnectionPool.GetInstance.Release(LConn);
+    end;
+  finally
+    LFileStream.Free;
+    LBody.Free;
+  end;
+end;
+
+class procedure TRedeFraternaControllers.HandleDeleteDownload(Req: THorseRequest; Res: THorseResponse);
+var
+  LTokenData: TTokenData;
+  LConn: TZConnection;
+  LQry: TZQuery;
+  LId: Integer;
+begin
+  LTokenData := ValidateToken(GetTokenByReq(Req));
+  if not LTokenData.IsValid then
+  begin
+    Res.Status(401).Send('{"error": "Token inválido ou expirado."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+  if not GCurrentUser.IsAdmin then
+  begin
+    Res.Status(403).Send('{"error": "Acesso negado: apenas Administradores podem excluir arquivos de download."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LId := StrToIntDef(Req.Params['id'], 0);
+  if LId <= 0 then
+  begin
+    Res.Status(400).Send('{"error": "ID inválido."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LConn := TZeosConnectionPool.GetInstance.Acquire(LTokenData.Database);
+  try
+    TRedeFraternaSchema.EnsureTenantSchema(LConn);
+    LQry := TZQuery.Create(nil);
+    try
+      LQry.Connection := LConn;
+      LQry.SQL.Text := 'UPDATE downloads SET ativo = ''N'' WHERE id = :id';
+      LQry.ParamByName('id').AsInteger := LId;
+      LQry.ExecSQL;
+      Res.Send('{"success": true}').ContentType(CONTENT_TYPE_JSON);
+    finally
+      LQry.Free;
+    end;
+  finally
+    TZeosConnectionPool.GetInstance.Release(LConn);
+  end;
+end;
+
+class procedure TRedeFraternaControllers.HandleGetDownloadsPublicos(Req: THorseRequest; Res: THorseResponse);
+var
+  LTenantConn: TZConnection;
+  LQry: TZQuery;
+  LTenantDB: string;
+  LCentroId: Integer;
+  LResp: TJSONObject;
+begin
+  LCentroId := StrToIntDef(Req.Query['centro_id'], 0);
+  LTenantDB := ResolveTenantDBName(Req.Query['tenant']);
+
+  LTenantConn := TZeosConnectionPool.GetInstance.Acquire(LTenantDB);
+  try
+    TRedeFraternaSchema.EnsureTenantSchema(LTenantConn);
+    LResp := TJSONObject.Create;
+    LQry := TZQuery.Create(nil);
+    try
+      LQry.Connection := LTenantConn;
+
+      LQry.SQL.Text :=
+        'SELECT d.id, d.centro_id, d.titulo, d.descricao, d.categoria, d.nome_arquivo, ' +
+        '       d.mime_type, d.tamanho_bytes, d.downloads_count, d.criado_em, ' +
+        '       c.nome AS centro_nome, c.sigla AS centro_sigla ' +
+        'FROM downloads d ' +
+        'LEFT JOIN centros_espiritas c ON c.id = d.centro_id ' +
+        'WHERE d.ativo = ''S'' AND COALESCE(d.publico, ''S'') = ''S'' ';
+      if LCentroId > 0 then
+        LQry.SQL.Text := LQry.SQL.Text + ' AND d.centro_id = :centro_id ';
+      LQry.SQL.Text := LQry.SQL.Text + ' ORDER BY d.id DESC';
+
+      if LCentroId > 0 then
+        LQry.ParamByName('centro_id').AsInteger := LCentroId;
+
+      LQry.Open;
+      LResp.Add('downloads', LQry.ToJSONArray);
+
+      LQry.Close;
+      LQry.SQL.Text :=
+        'SELECT id, nome, sigla FROM centros_espiritas WHERE ativo = ''S'' ORDER BY nome ASC';
+      LQry.Open;
+      LResp.Add('centros', LQry.ToJSONArray);
+      LResp.Add('entidade', ObterConfiguracaoEntidadeJSON(LTenantConn));
+
+      Res.Send(LResp.AsJSON).ContentType(CONTENT_TYPE_JSON);
+    finally
+      LQry.Free;
+      LResp.Free;
+    end;
+  finally
+    TZeosConnectionPool.GetInstance.Release(LTenantConn);
+  end;
+end;
+
+class procedure TRedeFraternaControllers.HandleGetDownloadArquivoPublico(Req: THorseRequest; Res: THorseResponse);
+var
+  LTenantConn: TZConnection;
+  LQry: TZQuery;
+  LTenantDB, LNomeArquivo, LMimeType: string;
+  LId: Integer;
+  LStream: TMemoryStream;
+begin
+  LId := StrToIntDef(Req.Params['id'], 0);
+  if LId <= 0 then
+  begin
+    Res.Status(400).Send('{"error": "ID do arquivo inválido."}').ContentType(CONTENT_TYPE_JSON);
+    Exit;
+  end;
+
+  LTenantDB := ResolveTenantDBName(Req.Query['tenant']);
+  LTenantConn := TZeosConnectionPool.GetInstance.Acquire(LTenantDB);
+  try
+    TRedeFraternaSchema.EnsureTenantSchema(LTenantConn);
+    LQry := TZQuery.Create(nil);
+    LStream := TMemoryStream.Create;
+    try
+      LQry.Connection := LTenantConn;
+      LQry.SQL.Text :=
+        'SELECT id, nome_arquivo, mime_type, arquivo_conteudo ' +
+        'FROM downloads ' +
+        'WHERE id = :id AND ativo = ''S'' AND COALESCE(publico, ''S'') = ''S''';
+      LQry.ParamByName('id').AsInteger := LId;
+      LQry.Open;
+
+      if LQry.IsEmpty then
+      begin
+        Res.Status(404).Send('{"error": "Arquivo não encontrado ou indisponível para download público."}').ContentType(CONTENT_TYPE_JSON);
+        Exit;
+      end;
+
+      LNomeArquivo := Trim(LQry.FieldByName('nome_arquivo').AsString);
+      if LNomeArquivo = '' then
+        LNomeArquivo := Format('arquivo_%d', [LId]);
+      LMimeType := Trim(LQry.FieldByName('mime_type').AsString);
+      if LMimeType = '' then
+        LMimeType := 'application/octet-stream';
+
+      (LQry.FieldByName('arquivo_conteudo') as TBlobField).SaveToStream(LStream);
+      LStream.Position := 0;
+      LQry.Close;
+
+      // Incrementa contador de downloads
+      LQry.SQL.Text := 'UPDATE downloads SET downloads_count = COALESCE(downloads_count, 0) + 1 WHERE id = :id';
+      LQry.ParamByName('id').AsInteger := LId;
+      LQry.ExecSQL;
+
+      Res.Download(LStream, LNomeArquivo, LMimeType);
+    finally
+      LStream.Free;
+      LQry.Free;
+    end;
+  finally
+    TZeosConnectionPool.GetInstance.Release(LTenantConn);
+  end;
+end;
+
 class procedure TRedeFraternaControllers.RegisterAllRoutes;
 begin
   // Configura FormatSettings padrão para datas ISO (yyyy-mm-dd) usadas pelo JSON/DataSet.Serialize
@@ -2559,6 +3117,14 @@ begin
   THorse.Get('/public/entidade', HandleGetEntidadePublica);
   THorse.Get('/public/agenda/:id', HandleGetAgendaPublicaCentro);
   THorse.Get('/public/noticias', HandleGetNoticiasPublicas);
+  THorse.Get('/public/downloads', HandleGetDownloadsPublicos);
+  THorse.Get('/public/downloads/:id/arquivo', HandleGetDownloadArquivoPublico);
+
+  // Gestão de Downloads Públicos (exclusivo Administrador)
+  THorse.Get('/api/downloads', HandleGetDownloads);
+  THorse.Post('/api/downloads', HandlePostDownload);
+  THorse.Put('/api/downloads/:id', HandlePutDownload);
+  THorse.Delete('/api/downloads/:id', HandleDeleteDownload);
 
   // Configuração de prefixo dos controllers CRUD automáticos do TWAPI
   TTWApiController.RoutePrefix := '/api';

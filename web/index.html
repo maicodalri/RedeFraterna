@@ -199,6 +199,9 @@
             <a :href="getPublicFeedUrl()" class="text-teal-700 hover:underline font-semibold">
               <i class="fa-regular fa-newspaper mr-1"></i>Feed Público de Notícias
             </a>
+            <a :href="getPublicDownloadsPageUrl()" class="text-emerald-700 hover:underline font-semibold">
+              <i class="fa-solid fa-cloud-arrow-down mr-1"></i>Downloads Públicos
+            </a>
             <a href="/" class="text-sky-700 hover:underline font-semibold">
               <i class="fa-solid fa-lock mr-1"></i>Acesso Restrito ao Sistema
             </a>
@@ -230,6 +233,11 @@
         </div>
 
         <div class="flex items-center gap-2">
+          <a :href="getPublicDownloadsPageUrl()"
+             class="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-medium transition flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-down text-emerald-600"></i>
+            <span class="hidden sm:inline">Downloads</span>
+          </a>
           <button @click="copyPublicFeedUrl()"
                   class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium transition flex items-center gap-1.5">
             <i class="fa-solid fa-share-nodes text-sky-600"></i>
@@ -433,7 +441,169 @@
     <footer class="border-t border-slate-200/80 bg-white py-5 px-4 sm:px-6 mt-12">
       <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
         <span>Rede Fraterna — {{ entidade.nome_mantenedora }}</span>
-        <a href="/" class="text-slate-600 hover:text-sky-700 font-medium">Acesso ao Sistema de Gestão</a>
+        <div class="flex items-center gap-4">
+          <a :href="getPublicDownloadsPageUrl()" class="text-emerald-700 hover:underline font-medium">Downloads Públicos</a>
+          <a href="/" class="text-slate-600 hover:text-sky-700 font-medium">Acesso ao Sistema de Gestão</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 0.6. PÁGINA PÚBLICA DE DOWNLOADS (ABERTA AO PÚBLICO)                  -->
+  <!-- ===================================================================== -->
+  <div v-else-if="publicDownloadsMode" class="min-h-screen bg-slate-50/70 text-slate-800 flex flex-col">
+    <!-- Barra Superior Minimalista -->
+    <header class="bg-white border-b border-slate-200/80 sticky top-0 z-30">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+            <i class="fa-solid fa-cloud-arrow-down text-sm"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-900 text-sm sm:text-base tracking-tight">Rede Fraterna</span>
+              <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">Downloads Públicos</span>
+            </div>
+            <p class="text-[11px] text-slate-400 hidden sm:block">{{ entidade.nome_mantenedora }} e Centros Espíritas Vinculados</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <a :href="getPublicFeedUrl()"
+             class="px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-medium transition flex items-center gap-1.5">
+            <i class="fa-regular fa-newspaper text-sky-600"></i>
+            <span class="hidden sm:inline">Notícias</span>
+          </a>
+          <button @click="copyPublicDownloadsPageUrl()"
+                  class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium transition flex items-center gap-1.5">
+            <i class="fa-solid fa-share-nodes text-emerald-600"></i>
+            <span class="hidden sm:inline">Compartilhar Página</span>
+          </button>
+          <a href="/"
+             class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium transition flex items-center gap-1.5">
+            <i class="fa-solid fa-lock text-[10px]"></i>
+            <span>Área Restrita</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Conteúdo Principal da Seção Pública de Downloads -->
+    <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
+
+      <!-- Estado de Carregamento -->
+      <div v-if="publicDownloadsLoading" class="py-20 text-center">
+        <i class="fa-solid fa-circle-notch fa-spin text-2xl text-emerald-600 mb-3"></i>
+        <p class="text-xs font-medium text-slate-500">Carregando arquivos disponíveis para download...</p>
+      </div>
+
+      <!-- Estado de Erro -->
+      <div v-else-if="publicDownloadsError" class="bg-white rounded-2xl border border-red-200 p-8 text-center max-w-lg mx-auto my-8 space-y-3">
+        <i class="fa-solid fa-circle-exclamation text-2xl text-red-500"></i>
+        <h2 class="text-sm font-bold text-slate-800">{{ publicDownloadsError }}</h2>
+        <button @click="loadPublicDownloads()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold">Tentar Novamente</button>
+      </div>
+
+      <!-- Listagem Pública de Downloads -->
+      <div v-else class="space-y-8">
+        <div class="space-y-4">
+          <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Central Pública de Downloads</h1>
+              <p class="text-xs sm:text-sm text-slate-500 mt-1">Documentos, formulários, apostilas de estudo e materiais públicos disponibilizados pela {{ entidade.nome_mantenedora }}.</p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div class="relative">
+                <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs absolute left-3 top-1/2 -translate-y-1/2"></i>
+                <input v-model="publicDownloadFiltroTexto" type="text" placeholder="Buscar arquivo..."
+                       class="pl-8 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs outline-none focus:border-emerald-600 w-full sm:w-52" />
+              </div>
+              <select v-model.number="publicDownloadFiltroCentroId"
+                      class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-700 outline-none focus:border-emerald-600">
+                <option :value="0">Todos ({{ entidade.sigla_mantenedora }} e Casas)</option>
+                <option :value="-1">Apenas {{ entidade.nome_mantenedora }} (Geral)</option>
+                <option v-for="c in publicCentrosList" :key="c.id" :value="c.id">
+                  {{ c.nome }}{{ c.sigla ? ' (' + c.sigla + ')' : '' }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Pílulas de Categorias -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <button @click="publicDownloadFiltroCategoria = ''"
+                    :class="publicDownloadFiltroCategoria === '' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition whitespace-nowrap">
+              Todos
+            </button>
+            <button v-for="cat in categoriasDownload" :key="cat.value"
+                    @click="publicDownloadFiltroCategoria = cat.value"
+                    :class="publicDownloadFiltroCategoria === cat.value ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition whitespace-nowrap">
+              {{ cat.label }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="filteredPublicDownloads.length === 0"
+             class="bg-white rounded-2xl border border-slate-200/80 p-12 text-center text-slate-400 text-sm">
+          Nenhum arquivo público disponível para os filtros selecionados.
+        </div>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div v-for="d in filteredPublicDownloads" :key="d.id"
+               class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs hover:shadow-md hover:border-emerald-300 transition flex flex-col justify-between gap-4">
+            <div class="flex items-start gap-4">
+              <div class="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-xl shrink-0">
+                <i :class="downloadFileIcon(d.nome_arquivo)"></i>
+              </div>
+              <div class="space-y-1.5 min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <span :class="downloadCategoriaBadge(d.categoria)" class="px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                    {{ formatCategoriaDownload(d.categoria) }}
+                  </span>
+                  <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                    {{ d.centro_nome ? (d.centro_sigla ? d.centro_nome + ' (' + d.centro_sigla + ')' : d.centro_nome) : entidade.nome_mantenedora }}
+                  </span>
+                </div>
+                <h2 class="text-sm sm:text-base font-bold text-slate-900 leading-snug">{{ d.titulo }}</h2>
+                <p v-if="d.descricao" class="text-xs text-slate-600 leading-relaxed">{{ d.descricao }}</p>
+                <div class="text-[11px] text-slate-400 flex flex-wrap items-center gap-3 pt-0.5">
+                  <span class="font-mono truncate max-w-[220px]" :title="d.nome_arquivo">{{ d.nome_arquivo }}</span>
+                  <span>• {{ formatFileSize(d.tamanho_bytes) }}</span>
+                  <span>• {{ d.downloads_count || 0 }} download(s)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+              <button type="button" @click="copyPublicDownloadFileUrl(d.id)"
+                      class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium transition flex items-center gap-1.5"
+                      title="Copiar link direto deste arquivo para enviar a outras pessoas">
+                <i class="fa-solid fa-link text-emerald-600"></i>
+                <span>Copiar Link Direto</span>
+              </button>
+              <a :href="getPublicDownloadFileUrl(d.id)" target="_blank"
+                 class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-download"></i>
+                <span>Baixar Arquivo</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Rodapé Minimalista -->
+    <footer class="border-t border-slate-200/80 bg-white py-5 px-4 sm:px-6 mt-12">
+      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+        <span>Rede Fraterna — {{ entidade.nome_mantenedora }}</span>
+        <div class="flex items-center gap-4">
+          <a :href="getPublicFeedUrl()" class="text-sky-700 hover:underline font-medium">Feed Público de Notícias</a>
+          <a href="/" class="text-slate-600 hover:text-emerald-700 font-medium">Acesso ao Sistema de Gestão</a>
+        </div>
       </div>
     </footer>
   </div>
@@ -508,12 +678,17 @@
           </div>
         </div>
 
-        <!-- Link de acesso rápido ao Feed Público de Notícias (sem necessidade de login) -->
-        <div class="pt-3 border-t border-slate-100 text-center">
+        <!-- Links de acesso rápido públicos (sem necessidade de login) -->
+        <div class="pt-3 border-t border-slate-100 space-y-2 text-center">
           <a :href="getPublicFeedUrl()"
              class="inline-flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg bg-slate-50 hover:bg-sky-50 text-slate-700 hover:text-sky-800 border border-slate-200 text-xs font-semibold transition">
             <i class="fa-regular fa-newspaper text-sky-600"></i>
             <span>Acessar Feed Público de Notícias ({{ entidade.nome_mantenedora }})</span>
+          </a>
+          <a :href="getPublicDownloadsPageUrl()"
+             class="inline-flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 text-xs font-semibold transition">
+            <i class="fa-solid fa-cloud-arrow-down text-emerald-600"></i>
+            <span>Acessar Central Pública de Downloads</span>
           </a>
         </div>
       </form>
@@ -700,6 +875,19 @@
                       class="w-full px-3 py-2.5 rounded-lg text-xs font-semibold transition flex items-center gap-3 text-left">
                 <i class="fa-solid fa-clock-rotate-left w-4 text-center"></i>
                 <span>Log de Alterações</span>
+              </button>
+
+              <!-- Menu de Downloads Públicos exclusivo para Administrador ('A') -->
+              <button v-if="currentUserType === 'A'"
+                      @click="switchTab('downloads')"
+                      :class="activeTab === 'downloads' ? 'bg-emerald-700 text-white shadow-sm' : 'text-emerald-700 hover:bg-emerald-50'"
+                      class="w-full px-3 py-2.5 rounded-lg text-xs font-semibold transition flex items-center justify-between text-left">
+                <div class="flex items-center gap-3">
+                  <i class="fa-solid fa-cloud-arrow-down w-4 text-center"></i>
+                  <span>Downloads Públicos</span>
+                </div>
+                <span :class="activeTab === 'downloads' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'"
+                      class="px-2 py-0.5 rounded-full text-[10px] font-bold">{{ downloadsList.length }}</span>
               </button>
 
               <!-- Menu de Usuários exclusivo para Administrador ('A') -->
@@ -1519,6 +1707,154 @@
                     </button>
                     <button v-if="canEditSystem" @click="deleteNoticia(n)"
                             class="p-1.5 rounded-lg text-red-600 hover:bg-red-50" title="Excluir Notícia">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- ABA 6.8: DOWNLOADS PÚBLICOS (EXCLUSIVO ADMINISTRADOR 'A')         -->
+      <!-- ================================================================= -->
+      <div v-if="activeTab === 'downloads' && currentUserType === 'A'" class="space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div>
+            <h2 class="text-base font-bold text-slate-800">Gerenciamento de Downloads Públicos</h2>
+            <p class="text-xs text-slate-500">Envie arquivos (armazenados diretamente no banco de dados), controle a visibilidade pública e gere links diretos para compartilhamento.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" @click="copyPublicDownloadsPageUrl()"
+                    class="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5">
+              <i class="fa-solid fa-link text-emerald-600"></i>
+              <span>Copiar Link da Página</span>
+            </button>
+            <a :href="getPublicDownloadsPageUrl()" target="_blank"
+               class="px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition flex items-center gap-1.5">
+              <i class="fa-solid fa-up-right-from-square"></i>
+              <span>Abrir Página Pública</span>
+            </a>
+            <button @click="openDownloadModal()"
+                    class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-2">
+              <i class="fa-solid fa-upload"></i>
+              <span>Novo Arquivo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Buscar por Título / Arquivo</label>
+            <input v-model="filtroDownloadTexto" type="text" placeholder="Digite para pesquisar..."
+                   class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Categoria</label>
+            <select v-model="filtroDownloadCategoria"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none focus:border-emerald-500">
+              <option value="">Todas as Categorias</option>
+              <option v-for="cat in categoriasDownload" :key="cat.value" :value="cat.value">{{ cat.label }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Origem</label>
+            <select v-model.number="filtroDownloadCentroId"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none focus:border-emerald-500">
+              <option :value="0">Todos ({{ entidade.sigla_mantenedora }} e Centros)</option>
+              <option :value="-1">{{ entidade.nome_mantenedora }} (Geral)</option>
+              <option v-for="c in centrosList" :key="c.id" :value="c.id">{{ c.nome }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Visibilidade Pública</label>
+            <select v-model="filtroDownloadPublico"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white outline-none focus:border-emerald-500">
+              <option value="">Todos (Públicos e Ocultos)</option>
+              <option value="S">Apenas Abertos ao Público</option>
+              <option value="N">Apenas Ocultos</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Tabela de Downloads -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase">
+                  <th class="py-3 px-4">Arquivo / Título</th>
+                  <th class="py-3 px-4">Categoria</th>
+                  <th class="py-3 px-4">Origem</th>
+                  <th class="py-3 px-4 text-center">Tamanho</th>
+                  <th class="py-3 px-4 text-center">Downloads</th>
+                  <th class="py-3 px-4 text-center">Público</th>
+                  <th class="py-3 px-4 text-right">Ações e Link Direto</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-xs">
+                <tr v-if="filteredDownloads.length === 0">
+                  <td colspan="7" class="py-8 text-center text-slate-400">Nenhum arquivo cadastrado para download.</td>
+                </tr>
+                <tr v-for="d in filteredDownloads" :key="d.id" class="hover:bg-slate-50/80 transition">
+                  <td class="py-3 px-4">
+                    <div class="flex items-start gap-3">
+                      <i :class="downloadFileIcon(d.nome_arquivo)" class="text-lg mt-0.5"></i>
+                      <div>
+                        <div class="font-bold text-slate-800">{{ d.titulo }}</div>
+                        <div class="text-[11px] font-mono text-slate-500">{{ d.nome_arquivo }}</div>
+                        <div v-if="d.descricao" class="text-[11px] text-slate-500 line-clamp-1 max-w-md">{{ d.descricao }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span :class="downloadCategoriaBadge(d.categoria)" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase">
+                      {{ formatCategoriaDownload(d.categoria) }}
+                    </span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <span v-if="d.centro_id && Number(d.centro_id) > 0"
+                          class="px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-semibold text-[11px]">
+                      {{ getCentroName(d.centro_id) }}
+                    </span>
+                    <span v-else class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                      {{ entidade.nome_mantenedora }}
+                    </span>
+                  </td>
+                  <td class="py-3 px-4 text-center font-mono text-slate-600 whitespace-nowrap">
+                    {{ formatFileSize(d.tamanho_bytes) }}
+                  </td>
+                  <td class="py-3 px-4 text-center font-bold text-slate-700">
+                    {{ d.downloads_count || 0 }}
+                  </td>
+                  <td class="py-3 px-4 text-center whitespace-nowrap">
+                    <button type="button" @click="togglePublicoDownload(d)"
+                            :class="(d.publico || 'S') === 'S'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'"
+                            class="px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase transition inline-flex items-center gap-1"
+                            title="Clique para alternar entre Aberto ao Público e Oculto">
+                      <i :class="(d.publico || 'S') === 'S' ? 'fa-solid fa-globe text-emerald-600' : 'fa-solid fa-eye-slash text-slate-400'"></i>
+                      <span>{{ (d.publico || 'S') === 'S' ? 'Público' : 'Oculto' }}</span>
+                    </button>
+                  </td>
+                  <td class="py-3 px-4 text-right whitespace-nowrap space-x-1">
+                    <button v-if="(d.publico || 'S') === 'S'" type="button" @click="copyPublicDownloadFileUrl(d.id)"
+                            class="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-semibold transition"
+                            title="Copiar link direto deste arquivo para encaminhar a outras pessoas">
+                      <i class="fa-solid fa-link mr-1"></i>Copiar Link
+                    </button>
+                    <a v-if="(d.publico || 'S') === 'S'" :href="getPublicDownloadFileUrl(d.id)" target="_blank"
+                       class="inline-flex items-center p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50" title="Testar Download">
+                      <i class="fa-solid fa-download"></i>
+                    </a>
+                    <button @click="openDownloadModal(d)" class="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100" title="Editar Arquivo / Metadados">
+                      <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <button @click="deleteDownload(d)" class="p-1.5 rounded-lg text-red-600 hover:bg-red-50" title="Excluir Arquivo">
                       <i class="fa-solid fa-trash"></i>
                     </button>
                   </td>
@@ -2956,6 +3292,91 @@
         <div class="pt-3 flex justify-end gap-2">
           <button type="button" @click="showPasswordModal = false" class="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold">Cancelar</button>
           <button type="submit" class="px-4 py-2 rounded-lg bg-sky-700 text-white text-xs font-semibold">Alterar Senha</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 11: UPLOAD / EDIÇÃO DE ARQUIVO PARA DOWNLOAD (ADMIN)            -->
+  <!-- ===================================================================== -->
+  <div v-if="showDownloadModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden my-8">
+      <div class="bg-emerald-700 px-6 py-4 text-white flex items-center justify-between">
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span>{{ downloadForm.id ? 'Editar Arquivo de Download' : 'Enviar Novo Arquivo para Download' }}</span>
+        </h3>
+        <button @click="showDownloadModal = false" class="text-white/80 hover:text-white text-xl leading-none">&times;</button>
+      </div>
+
+      <form @submit.prevent="saveDownload" class="p-6 space-y-4">
+        <div class="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-2">
+          <label class="block text-xs font-bold text-emerald-900 uppercase">
+            <i class="fa-solid fa-file-arrow-up mr-1 text-emerald-700"></i>
+            {{ downloadForm.id ? 'Substituir Arquivo (opcional — deixe em branco para manter o atual)' : 'Selecionar Arquivo (Armazenado no Banco de Dados) *' }}
+          </label>
+          <input type="file" @change="onSelectDownloadFile" :required="!downloadForm.id"
+                 class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer" />
+          <div v-if="downloadForm.nome_arquivo" class="text-[11px] text-emerald-800 flex items-center gap-2 pt-1">
+            <i :class="downloadFileIcon(downloadForm.nome_arquivo)"></i>
+            <span class="font-mono font-semibold">{{ downloadForm.nome_arquivo }}</span>
+            <span v-if="downloadForm.tamanho_bytes > 0" class="text-emerald-700">({{ formatFileSize(downloadForm.tamanho_bytes) }})</span>
+          </div>
+          <p class="text-[11px] text-emerald-700">Tamanho máximo por arquivo: 25 MB. O conteúdo é gravado diretamente no banco de dados.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Título do Download *</label>
+          <input v-model="downloadForm.titulo" type="text" required
+                 placeholder="Ex: Estatuto Social, Ficha de Inscrição, Apostila ESDE..."
+                 class="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:border-emerald-600" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Categoria *</label>
+            <select v-model="downloadForm.categoria" required
+                    class="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm bg-white outline-none focus:border-emerald-600">
+              <option v-for="cat in categoriasDownload" :key="cat.value" :value="cat.value">{{ cat.label }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Origem</label>
+            <select v-model.number="downloadForm.centro_id"
+                    class="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm bg-white outline-none focus:border-emerald-600">
+              <option :value="0">{{ entidade.nome_mantenedora }} (Geral)</option>
+              <option v-for="c in centrosList" :key="c.id" :value="c.id">{{ c.nome }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Aberto ao Público?</label>
+            <select v-model="downloadForm.publico"
+                    class="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm bg-white outline-none focus:border-emerald-600">
+              <option value="S">Sim (Público)</option>
+              <option value="N">Não (Oculto)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Descrição / Orientações (Opcional)</label>
+          <textarea v-model="downloadForm.descricao" rows="3"
+                    placeholder="Breve descrição do conteúdo do arquivo..."
+                    class="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm outline-none focus:border-emerald-600"></textarea>
+        </div>
+
+        <div class="pt-4 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" @click="showDownloadModal = false"
+                  class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button type="submit" :disabled="savingDownload"
+                  class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5">
+            <i v-if="savingDownload" class="fa-solid fa-circle-notch fa-spin"></i>
+            <i v-else class="fa-solid fa-floppy-disk"></i>
+            <span>{{ savingDownload ? 'Enviando...' : 'Salvar no Banco de Dados' }}</span>
+          </button>
         </div>
       </form>
     </div>
