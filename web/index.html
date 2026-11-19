@@ -194,7 +194,11 @@
 
         <!-- Rodapé Público -->
         <div class="text-center text-xs text-slate-400 pt-2 pb-6 flex flex-col sm:flex-row items-center justify-between gap-2 print:hidden">
-          <span>Rede Fraterna — {{ entidade.nome_mantenedora }}</span>
+          <span>
+            Rede Fraterna — {{ entidade.nome_mantenedora }} • &copy; {{ new Date().getFullYear() }}
+            <a href="https://ldrsis.com.br/" target="_blank" rel="noopener noreferrer" class="font-semibold text-slate-600 hover:text-sky-700 hover:underline">LDR - Sis</a>
+            — Todos os direitos reservados.
+          </span>
           <div class="flex items-center gap-4">
             <a :href="getPublicFeedUrl()" class="text-teal-700 hover:underline font-semibold">
               <i class="fa-regular fa-newspaper mr-1"></i>Feed Público de Notícias
@@ -439,8 +443,12 @@
 
     <!-- Rodapé Minimalista do Feed -->
     <footer class="border-t border-slate-200/80 bg-white py-5 px-4 sm:px-6 mt-12">
-      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-        <span>Rede Fraterna — {{ entidade.nome_mantenedora }}</span>
+      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+        <span>
+          Rede Fraterna — {{ entidade.nome_mantenedora }} • &copy; {{ new Date().getFullYear() }}
+          <a href="https://ldrsis.com.br/" target="_blank" rel="noopener noreferrer" class="font-semibold text-slate-700 hover:text-sky-700 hover:underline">LDR - Sis</a>
+          — Todos os direitos reservados.
+        </span>
         <div class="flex items-center gap-4">
           <a :href="getPublicDownloadsPageUrl()" class="text-emerald-700 hover:underline font-medium">Downloads Públicos</a>
           <a href="/" class="text-slate-600 hover:text-sky-700 font-medium">Acesso ao Sistema de Gestão</a>
@@ -598,8 +606,12 @@
 
     <!-- Rodapé Minimalista -->
     <footer class="border-t border-slate-200/80 bg-white py-5 px-4 sm:px-6 mt-12">
-      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-        <span>Rede Fraterna — {{ entidade.nome_mantenedora }}</span>
+      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+        <span>
+          Rede Fraterna — {{ entidade.nome_mantenedora }} • &copy; {{ new Date().getFullYear() }}
+          <a href="https://ldrsis.com.br/" target="_blank" rel="noopener noreferrer" class="font-semibold text-slate-700 hover:text-emerald-700 hover:underline">LDR - Sis</a>
+          — Todos os direitos reservados.
+        </span>
         <div class="flex items-center gap-4">
           <a :href="getPublicFeedUrl()" class="text-sky-700 hover:underline font-medium">Feed Público de Notícias</a>
           <a href="/" class="text-slate-600 hover:text-emerald-700 font-medium">Acesso ao Sistema de Gestão</a>
@@ -611,7 +623,7 @@
   <!-- ===================================================================== -->
   <!-- 1. TELA DE LOGIN                                                      -->
   <!-- ===================================================================== -->
-  <div v-else-if="!token" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-4">
+  <div v-else-if="!token" class="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-50 via-white to-indigo-50 p-4">
     <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden">
       <div class="bg-sky-700 p-6 text-white text-center">
         <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white/15 mb-3">
@@ -693,15 +705,24 @@
         </div>
       </form>
     </div>
+
+    <p class="mt-6 text-[11px] text-slate-500 text-center">
+      &copy; {{ new Date().getFullYear() }}
+      <a href="https://ldrsis.com.br/" target="_blank" rel="noopener noreferrer"
+         class="font-semibold text-slate-700 hover:text-sky-700 hover:underline transition">
+        LDR - Sis
+      </a>
+      — Todos os direitos reservados • Rede Fraterna
+    </p>
   </div>
 
   <!-- ===================================================================== -->
   <!-- 2. LAYOUT PRINCIPAL DO SISTEMA (BARRA DE TÍTULO + BARRA LATERAL)      -->
   <!-- ===================================================================== -->
-  <div v-else class="min-h-screen flex flex-col">
+  <div v-else class="h-screen overflow-hidden flex flex-col">
 
     <!-- Cabeçalho Superior (Barra de Título) -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <header class="bg-white border-b border-slate-200 shrink-0 z-30">
       <div class="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <!-- Botão Mobile para abrir/fechar Menu Lateral -->
@@ -764,7 +785,7 @@
     </header>
 
     <!-- Corpo Principal: Barra Lateral + Área de Conteúdo -->
-    <div class="flex-1 flex relative">
+    <div class="flex-1 min-h-0 flex relative overflow-hidden">
 
       <!-- Overlay escuro em telas pequenas quando o menu lateral está aberto -->
       <div v-if="sidebarOpen" @click="sidebarOpen = false"
@@ -933,7 +954,8 @@
       </aside>
 
       <!-- Conteúdo Principal -->
-      <main class="flex-1 min-w-0 p-4 sm:p-6 max-w-7xl mx-auto w-full">
+      <div class="flex-1 min-w-0 h-full overflow-y-auto">
+        <main class="p-4 sm:p-6 max-w-7xl mx-auto w-full">
 
       <!-- ================================================================= -->
       <!-- ABA 1: VISÃO GERAL / DASHBOARD                                    -->
@@ -2011,8 +2033,27 @@
         </div>
       </div>
 
-      </main>
+        </main>
+      </div>
     </div>
+
+    <!-- BARRA DE RODAPÉ INSTITUCIONAL -->
+    <footer class="bg-white border-t border-slate-200 px-6 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 shrink-0 z-20">
+      <div class="flex items-center gap-1.5">
+        <i class="fa-solid fa-hands-holding-child text-sky-700 text-[11px]"></i>
+        <span class="font-semibold text-slate-700">Rede Fraterna</span>
+        <span>— Gestão Integrada de Centros Espíritas e Assistência Social</span>
+      </div>
+      <div class="text-center sm:text-right">
+        &copy; {{ new Date().getFullYear() }}
+        <a href="https://ldrsis.com.br/" target="_blank" rel="noopener noreferrer"
+           class="font-semibold text-slate-800 hover:text-sky-700 hover:underline inline-flex items-center gap-1 transition">
+          <span>LDR - Sis</span>
+          <i class="fa-solid fa-up-right-from-square text-[9px] opacity-75"></i>
+        </a>
+        — Todos os direitos reservados.
+      </div>
+    </footer>
   </div>
 
   <!-- ===================================================================== -->
@@ -2153,6 +2194,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -2498,6 +2540,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -2857,6 +2900,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -2939,6 +2983,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -3046,6 +3091,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -3113,6 +3159,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -3236,6 +3283,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -3295,6 +3343,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
   <!-- ===================================================================== -->
@@ -3380,6 +3429,7 @@
         </div>
       </form>
     </div>
+
   </div>
 
 </div>
